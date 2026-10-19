@@ -14,14 +14,14 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace = "com.qpt.powermonitor"
+    namespace = "io.github.rusheng920.wattscope"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.qpt.powermonitor"
+        applicationId = "io.github.rusheng920.wattscope"
         minSdk = 33
         targetSdk = 36
-        versionCode = 2
+        versionCode = 1
         versionName = "1.0.0"
     }
 

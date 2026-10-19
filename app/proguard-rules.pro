@@ -1,4 +1,4 @@
-# QPT Power Monitor - R8/ProGuard 规则
+# WattScope-Next - R8/ProGuard 规则
 
 # ---------- libsu (com.github.topjohnwu.libsu) ----------
 # libsu 通过反射实例化/访问 Shell 相关类，需保留
