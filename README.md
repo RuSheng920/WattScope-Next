@@ -73,7 +73,7 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 ## 架构
 
 ```
-app/src/main/java/com/qpt/powermonitor/
+app/src/main/java/io/github/rusheng920/wattscope/
 ├── core/                 采集层（全部在 root shell 内完成）
 │   ├── root/             libsu 封装、shell 转义
 │   ├── qpt/              QPT zone 枚举与功率/能量读取
