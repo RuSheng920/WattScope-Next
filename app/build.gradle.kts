@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.rusheng920.wattscope"
         minSdk = 33
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     signingConfigs {
@@ -84,6 +84,11 @@ dependencies {
     // MIUIX（HyperOS 设计语言）：真实组件库，而非自绘仿制
     implementation("top.yukonga.miuix.kmp:miuix-android:$miuixVersion")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:$miuixVersion")
+
+    // 液态玻璃：Kyant0 Backdrop（https://github.com/Kyant0/AndroidLiquidGlass）
+    // 1.0.6 是最后一个面向 Compose 1.10.3 / Kotlin 2.3.x 的版本，
+    // 与本项目 BOM 2026.02.00 精确对齐；2.x 起要求 Kotlin 2.4 / CMP 1.12，不要升级。
+    implementation("io.github.kyant0:backdrop:1.0.6")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation("androidx.work:work-runtime-ktx:2.10.2")

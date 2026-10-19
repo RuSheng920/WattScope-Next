@@ -98,10 +98,13 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.rusheng920.wattscope.BuildConfig
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
@@ -110,6 +113,7 @@ import io.github.rusheng920.wattscope.domain.ZoneSample
 import io.github.rusheng920.wattscope.domain.ZoneStats
 import io.github.rusheng920.wattscope.ui.components.ActionRow
 import io.github.rusheng920.wattscope.ui.components.BottomItem
+import io.github.rusheng920.wattscope.ui.components.EmptyState
 import io.github.rusheng920.wattscope.ui.components.FloatingGlassBottomBar
 import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixBottomBar
@@ -119,6 +123,7 @@ import io.github.rusheng920.wattscope.ui.components.PillButton
 import io.github.rusheng920.wattscope.ui.components.PillTone
 import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.SegmentedControl
+import io.github.rusheng920.wattscope.ui.components.SelectChip
 import io.github.rusheng920.wattscope.ui.components.StatusPill
 import io.github.rusheng920.wattscope.ui.theme.ChartColors
 import io.github.rusheng920.wattscope.ui.theme.LocalChartColors
@@ -163,6 +168,7 @@ fun QptApp(
     val state by viewModel.state.collectAsState()
     val records by viewModel.records.collectAsState()
     val bubbleEnabled by viewModel.bubbleEnabled.collectAsState()
+    val bubbleSize by viewModel.bubbleSize.collectAsState()
     val osdEnabled by viewModel.osdEnabled.collectAsState()
     val osdMetrics by viewModel.osdMetrics.collectAsState()
     val fpsLayer by viewModel.fpsLayer.collectAsState()
@@ -171,6 +177,7 @@ fun QptApp(
     val permissions by viewModel.permissions.collectAsState()
     val glassBottomBar by viewModel.glassBottomBar.collectAsState()
     val glassIntensity by viewModel.glassIntensity.collectAsState()
+    val glassPauseRecording by viewModel.glassPauseRecording.collectAsState()
     val onboardingDone by viewModel.onboardingDone.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
@@ -178,6 +185,32 @@ fun QptApp(
     var permissionsOpen by remember { mutableStateOf(false) }
     var tabBackProgress by remember { mutableFloatStateOf(0f) }
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // 页面底色带一点点纵向冷暖过渡（顶部与 MIUIX surface 完全一致，所以顶栏没有接缝）。
+    // 这不是装饰：液态玻璃需要有「可折射的内容」才像玻璃，纯灰底上的玻璃永远是灰片。
+    val pageBrush = remember(isDarkTheme) {
+        val colors = if (isDarkTheme) {
+            listOf(Color(0xFF000000), Color(0xFF05080D), Color(0xFF0A1119))
+        } else {
+            listOf(Color(0xFFF7F7F7), Color(0xFFF5F7FB), Color(0xFFEEF3FA))
+        }
+        Brush.verticalGradient(colors)
+    }
+
+    // 液态玻璃的采样源：把整棵内容树录制到一张 GraphicsLayer，
+    // 底栏的 drawBackdrop 再从这张图里取「自己身后的那一段」做模糊与折射。
+    // 背景色必须画进 backdrop，否则底栏采样到的是透明像素。
+    val glassBackdrop = rememberLayerBackdrop(
+        onDraw = remember(pageBrush) {
+            {
+                drawRect(brush = pageBrush)
+                drawContent()
+            }
+        },
+    )
+
+    // 记录期间默认关掉实时模糊：逐帧 RenderEffect 会抬高 GPU 功耗，污染测量结果
+    val liveGlass = !(glassPauseRecording && state.isRecording)
 
     // 权限页 / 首次引导可见时每 1.5s 刷新一次：root、悬浮窗、通知状态变化无需重启应用
     LaunchedEffect(permissionsOpen, onboardingDone) {
@@ -201,9 +234,11 @@ fun QptApp(
         tab = 0
     }
 
-    Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+    Box(Modifier.fillMaxSize().background(pageBrush)) {
         Scaffold(
-            containerColor = MiuixTheme.colorScheme.surface,
+            // 只有内容层参与玻璃采样；悬浮底栏在 Scaffold 之外，避免自引用
+            modifier = Modifier.layerBackdrop(glassBackdrop),
+            containerColor = Color.Transparent,
             topBar = {
                 when (tab) {
                     0 -> TopAppBar(
@@ -303,21 +338,25 @@ fun QptApp(
                         interval = state.interval,
                         themeMode = themeMode,
                         bubbleEnabled = bubbleEnabled,
+                        bubbleSize = bubbleSize,
                         osdEnabled = osdEnabled,
                         osdMetrics = osdMetrics,
                         permissions = permissions,
                         glassBottomBar = glassBottomBar,
                         glassIntensity = glassIntensity,
+                        glassPauseRecording = glassPauseRecording,
                         bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                         onToggleEnabled = viewModel::setEnabled,
                         onInterval = viewModel::setInterval,
                         onThemeMode = viewModel::setThemeMode,
                         onGlassBottomBar = viewModel::setGlassBottomBar,
                         onGlassIntensity = viewModel::setGlassIntensity,
+                        onGlassPauseRecording = viewModel::setGlassPauseRecording,
                         onStartService = onStartService,
                         onRequestBatteryWhitelist = onRequestBatteryWhitelist,
                         onOpenMiuiAutostart = onOpenMiuiAutostart,
                         onToggleBubble = onToggleBubble,
+                        onBubbleSize = viewModel::setBubbleSize,
                         onToggleOsd = viewModel::setOsdEnabled,
                         onOsdMetricsChange = viewModel::setOsdMetrics,
                         fpsLayer = fpsLayer,
@@ -342,8 +381,10 @@ fun QptApp(
                     ),
                     selected = tab,
                     onSelect = { tab = it },
+                    backdrop = glassBackdrop,
                     intensity = glassIntensity,
                     dark = isDarkTheme,
+                    live = liveGlass,
                 )
             }
         }
@@ -514,10 +555,10 @@ private fun Dashboard(
         item {
             if (samples.isEmpty()) {
                 MiuixCard {
-                    Text(
-                        "暂无实时数据。开启 QPT 或开始记录后，这里会按分区显示功耗。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    EmptyState(
+                        icon = Icons.Rounded.Layers,
+                        title = "还没有分区数据",
+                        description = "开启 QPT 或开始记录后，这里会按分区显示实时功耗。",
                     )
                 }
             } else {
@@ -644,7 +685,7 @@ private fun ZoneRow(
                     .fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp)
                     .height(1.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant),
+                    .background(MiuixTheme.colorScheme.dividerLine),
             )
         }
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1052,8 +1093,11 @@ private fun DrawScope.drawSeriesChart(
     val maxValue = max(1f, fixedMax ?: allPoints.maxOf { it.second })
     val rightMax = if (rightSeries != null) max(1f, rightFixedMax ?: (rightSeries.points.maxOfOrNull { it.second } ?: 1f)) else 0f
 
-    niceTicks(maxValue, yTickCount).forEach { value ->
-        val y = bottom - (value / maxValue) * chartHeight
+    // niceTicks 的末刻度是步长整数倍且 >= maxValue，用它当轴上界，曲线才不会顶出绘图区
+    val leftTicks = niceTicks(maxValue, yTickCount)
+    val leftAxisMax = leftTicks.last().coerceAtLeast(1e-6f)
+    leftTicks.forEach { value ->
+        val y = bottom - (value / leftAxisMax) * chartHeight
         drawLine(colors.grid, Offset(left, y), Offset(right, y), strokeWidth = 1f)
         drawContext.canvas.nativeCanvas.drawText(formatter(value), 0f, y + 8f, textPaint)
     }
@@ -1064,8 +1108,10 @@ private fun DrawScope.drawSeriesChart(
         drawContext.canvas.nativeCanvas.drawText("${((durationMs * ratio) / 1000f).roundToInt()}s", x - 18f, size.height - 8f, textPaint)
     }
     if (rightSeries != null) {
-        niceTicks(rightMax, rightTickCount).forEach { value ->
-            val y = bottom - (value / rightMax) * chartHeight
+        val rightTicks = niceTicks(rightMax, rightTickCount)
+        val rightAxisMax = rightTicks.last().coerceAtLeast(1e-6f)
+        rightTicks.forEach { value ->
+            val y = bottom - (value / rightAxisMax) * chartHeight
             drawContext.canvas.nativeCanvas.drawText(rightFormatter(value), right + 6f, y + 8f, textPaint)
         }
     }
@@ -1075,7 +1121,7 @@ private fun DrawScope.drawSeriesChart(
         val path = Path()
         s.points.forEachIndexed { index, (ts, value) ->
             val x = left + ((ts - minTs).toFloat() / durationMs) * chartWidth
-            val y = bottom - (value / maxValue) * chartHeight
+            val y = bottom - (value / leftAxisMax) * chartHeight
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         drawPath(path, s.color, style = Stroke(width = 2.5f, cap = StrokeCap.Round))
@@ -1124,15 +1170,23 @@ private fun formatFreqHz(f: Float): String =
     else if (f >= 1_000_000f) "%.0f MHz".format(Locale.US, f / 1_000_000f)
     else "%.0f kHz".format(Locale.US, f / 1_000f)
 
+/**
+ * 生成「步长对齐」的刻度，并保证 [niceTicks] 的最后一个刻度 >= [max]。
+ *
+ * 旧实现用 `while (v <= max)` 收尾，当 max 不是步长整数倍时最后一个刻度会小于 max，
+ * 于是坐标轴上界低于真实峰值，最高那根柱子被 clamp 到满高、数值标签压到柱体里。
+ * 这里先向上取整到步长倍数，再按该上界铺刻度。
+ */
 private fun niceTicks(max: Float, targetCount: Int): List<Float> {
     if (max <= 0f) return listOf(0f)
     val slots = (targetCount - 1).coerceAtLeast(1)
     val raw = max / slots
     val mag = 10f.pow(floor(log10(raw.toDouble())).toFloat())
     val step = (ceil(raw / mag) * mag).coerceAtLeast(1e-6f)
-    val ticks = ArrayList<Float>(slots + 1)
+    val axisMax = ceil(max / step) * step
+    val ticks = ArrayList<Float>(slots + 2)
     var v = 0f
-    while (v <= max + step * 1e-3f) {
+    while (v <= axisMax + step * 1e-3f) {
         ticks += v
         v += step
     }
@@ -1294,22 +1348,30 @@ private fun parseCpuRanges(name: String): List<IntRange> {
 /**
  * 实时功耗柱状图：每个分区一根柱子，底部对齐、顶部圆角 + 渐变填充。
  * 相比折线/散点，柱状更适合「同一时刻各分区谁更耗电」的横向比较。
+ *
+ * 布局上把画布切成「柱顶数值带 + 绘图区」两段：柱子最高只画到绘图区顶部，
+ * 读数永远落在柱顶之上的空白带里。旧实现让柱子顶到画布边缘、标签被
+ * `coerceAtLeast` 压进柱体，再用柱身同色绘制，SOC 这种最高柱的读数就「消失」了。
  */
 @Composable
 private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
     val colors = LocalChartColors.current
     val density = LocalDensity.current
     val tickTextPx = with(density) { 9.sp.toPx() }
-    val valueTextPx = with(density) { 9.5.sp.toPx() }
+    val valueTextPx = with(density) { 10.sp.toPx() }
     val zoneTextPx = with(density) { 9.sp.toPx() }
 
-    Canvas(Modifier.fillMaxWidth().height(206.dp)) {
-        val left = 40.dp.toPx()
-        val right = size.width - 2.dp.toPx()
-        val top = 26.dp.toPx()
-        val bottom = size.height - 26.dp.toPx()
+    Canvas(Modifier.fillMaxWidth().height(214.dp)) {
+        val left = 42.dp.toPx()
+        val right = size.width - 4.dp.toPx()
+        val top = 6.dp.toPx()
+        val bottom = size.height - 28.dp.toPx()
+
+        // 数值带高度跟随字号（系统字体放大时同步变高），保证读数不被裁切
+        val labelBand = valueTextPx * 1.5f + 6.dp.toPx()
+        val plotTop = top + labelBand
         val chartWidth = (right - left).coerceAtLeast(1f)
-        val chartHeight = (bottom - top).coerceAtLeast(1f)
+        val plotHeight = (bottom - plotTop).coerceAtLeast(1f)
 
         val tickPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.label.toArgb()
@@ -1321,33 +1383,44 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
             textAlign = android.graphics.Paint.Align.CENTER
         }
         val valuePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            // 用主题前景色而不是柱身色：浅色主题深字、深色主题浅字，任何柱色上都可读
+            color = colors.tooltipText.toArgb()
             textSize = valueTextPx
             textAlign = android.graphics.Paint.Align.CENTER
         }
 
         drawLine(colors.axis, Offset(left, bottom), Offset(right, bottom), strokeWidth = 2f)
 
-        val maxW = max(1L, samples.maxOfOrNull { it.effectivePowerUw } ?: 1L) / 1_000_000f
-        val ticks = niceTicks(maxW * 1.08f, 5)
-        val axisMax = max(0.001f, ticks.last())
+        val maxW = (samples.maxOfOrNull { it.effectivePowerUw } ?: 0L)
+            .coerceAtLeast(1L) / 1_000_000f
+        // niceTicks 保证末刻度 >= maxW，轴上界不会再低于真实峰值
+        val ticks = niceTicks(maxW, 5)
+        val axisMax = ticks.last().coerceAtLeast(1e-3f)
         ticks.forEach { tick ->
-            if (tick > axisMax + 1e-4f) return@forEach
-            val y = bottom - (tick / axisMax) * chartHeight
+            val y = bottom - (tick / axisMax) * plotHeight
             if (tick > 0f) drawLine(colors.grid, Offset(left, y), Offset(right, y), strokeWidth = 1f)
             val text = when {
-                axisMax >= 10f -> "%.0f".format(Locale.US, tick)
-                axisMax >= 1f -> "%.1f".format(Locale.US, tick)
+                axisMax >= 100f -> "%.0f".format(Locale.US, tick)
+                axisMax >= 10f -> "%.1f".format(Locale.US, tick)
                 else -> "%.2f".format(Locale.US, tick)
             }
-            drawContext.canvas.nativeCanvas.drawText(text, 0f, y + tickTextPx * 0.36f, tickPaint)
+            // 右对齐到轴左侧，避免 "10.0" 这类三位以上刻度压住轴线
+            val textWidth = tickPaint.measureText(text)
+            drawContext.canvas.nativeCanvas.drawText(
+                text,
+                (left - 7.dp.toPx() - textWidth).coerceAtLeast(0f),
+                y + tickTextPx * 0.36f,
+                tickPaint,
+            )
         }
 
         val slot = chartWidth / samples.size
         val barWidth = min(slot * 0.56f, 30.dp.toPx())
+        var lastLabelRight = Float.NEGATIVE_INFINITY
         samples.forEachIndexed { index, sample ->
             val valueW = sample.effectivePowerUw / 1_000_000f
             val centerX = left + slot * (index + 0.5f)
-            val barHeight = (valueW / axisMax * chartHeight).coerceIn(2.dp.toPx(), chartHeight)
+            val barHeight = (valueW / axisMax * plotHeight).coerceIn(2.dp.toPx(), plotHeight)
             val color = palette[index % palette.size]
 
             drawRoundRect(
@@ -1361,18 +1434,26 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
             )
 
-            if (slot >= 26.dp.toPx()) {
-                valuePaint.color = color.toArgb()
-                val valueY = (bottom - barHeight - 6.dp.toPx()).coerceAtLeast(top + valueTextPx)
+            // 读数画在柱顶上方；相邻标签会重叠时跳过，保证每个数字都完整可读
+            val valueLabel = when {
+                valueW >= 100f -> "%.0f".format(Locale.US, valueW)
+                valueW >= 10f -> "%.1f".format(Locale.US, valueW)
+                else -> "%.2f".format(Locale.US, valueW)
+            }
+            val halfTextWidth = valuePaint.measureText(valueLabel) / 2f
+            val fitsSlot = slot >= valuePaint.measureText("0.00") + 3.dp.toPx()
+            if (fitsSlot && centerX - halfTextWidth > lastLabelRight + 2.dp.toPx()) {
                 drawContext.canvas.nativeCanvas.drawText(
-                    "%.2f".format(Locale.US, valueW),
+                    valueLabel,
                     centerX,
-                    valueY,
+                    bottom - barHeight - 5.dp.toPx(),
                     valuePaint,
                 )
+                lastLabelRight = centerX + halfTextWidth
             }
+
             val zoneLabel = fitLabel(sample.zoneName.uppercase(), slot - 2.dp.toPx(), labelPaint)
-            drawContext.canvas.nativeCanvas.drawText(zoneLabel, centerX, bottom + 16.dp.toPx(), labelPaint)
+            drawContext.canvas.nativeCanvas.drawText(zoneLabel, centerX, bottom + 17.dp.toPx(), labelPaint)
         }
     }
 }
@@ -1414,11 +1495,11 @@ private fun History(
 
         if (records.isEmpty()) {
             item {
-                MiuixCard {
-                    Text(
-                        "点击仪表盘的「开始记录」，或使用悬浮球开始记录当前应用。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                MiuixCard(contentPadding = 0.dp) {
+                    EmptyState(
+                        icon = Icons.Rounded.History,
+                        title = "还没有记录",
+                        description = "点击仪表盘的「开始记录」，或单击悬浮球记录当前应用；退出应用时会自动停止。",
                     )
                 }
             }
@@ -1471,21 +1552,25 @@ private fun SettingsScreen(
     interval: SamplingInterval,
     themeMode: ThemeMode,
     bubbleEnabled: Boolean,
+    bubbleSize: BubbleSize,
     osdEnabled: Boolean,
     osdMetrics: List<OsdMetric>,
     permissions: AppPermissions,
     glassBottomBar: Boolean,
     glassIntensity: GlassIntensity,
+    glassPauseRecording: Boolean,
     bottomPadding: Dp = 24.dp,
     onToggleEnabled: (Boolean) -> Unit,
     onInterval: (SamplingInterval) -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onGlassBottomBar: (Boolean) -> Unit,
     onGlassIntensity: (GlassIntensity) -> Unit,
+    onGlassPauseRecording: (Boolean) -> Unit,
     onStartService: () -> Unit,
     onRequestBatteryWhitelist: () -> Unit,
     onOpenMiuiAutostart: () -> Unit,
     onToggleBubble: (Boolean) -> Unit,
+    onBubbleSize: (BubbleSize) -> Unit,
     onToggleOsd: (Boolean) -> Unit,
     onOsdMetricsChange: (List<OsdMetric>) -> Unit,
     fpsLayer: String?,
@@ -1530,7 +1615,7 @@ private fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("悬浮玻璃底栏", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "底栏浮在内容之上，液态玻璃样式仅在应用内使用",
+                            "低着色 + 边缘折射：内容从玻璃下方透出并被轻微弯曲",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1552,10 +1637,24 @@ private fun SettingsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "轻盈更通透，浓郁更强调底栏轮廓；三档都保持内容可读。",
+                        "三档只调整模糊半径与折射强度，表面着色始终很淡 —— 数值越大，玻璃越「厚」、边缘折射越明显。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(Icons.Rounded.Timer, MaterialTheme.colorScheme.tertiary)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("记录时暂停实时模糊", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "实时模糊需要持续占用 GPU，开启后记录期间自动降级为静态玻璃，避免污染功耗数据",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        MiuixSwitch(checked = glassPauseRecording, onCheckedChange = onGlassPauseRecording)
+                    }
                 }
             }
         }
@@ -1574,7 +1673,7 @@ private fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .height(1.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant),
+                        .background(MiuixTheme.colorScheme.dividerLine),
                 )
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -1607,52 +1706,75 @@ private fun SettingsScreen(
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
                     title = "悬浮球",
-                    subtitle = "点击记录 / 双击展开快捷菜单",
+                    subtitle = "单击记录 / 长按控制面板 / 拖到边缘自动吸附",
                     icon = Icons.Rounded.Layers,
                     trailing = { MiuixSwitch(checked = bubbleEnabled, onCheckedChange = onToggleBubble) },
                 )
+                if (bubbleEnabled) {
+                    CardInnerDivider()
+                    Column(
+                        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("悬浮球大小", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "迷你档遮挡面积最小；改动立即生效，不需要重启服务",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BubbleSize.entries.forEach { size ->
+                                SelectChip(
+                                    text = size.label,
+                                    selected = size == bubbleSize,
+                                    onClick = { onBubbleSize(size) },
+                                )
+                            }
+                        }
+                    }
+                }
+                CardInnerDivider()
                 ActionRow(
                     title = "OSD 实时浮层",
-                    subtitle = "纯色半透明浮层，可拖动、不写入记录",
+                    subtitle = "两列 HUD，可拖动、轻点切换透明度、不写入记录",
                     icon = Icons.Rounded.Notifications,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     trailing = { MiuixSwitch(checked = osdEnabled, onCheckedChange = onToggleOsd) },
-                    showDivider = true,
                 )
             }
         }
 
         if (osdEnabled) {
             item {
-                MiuixCard(contentPadding = 0.dp) {
-                    Text(
-                        "OSD 显示项",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(start = 16.dp, top = 14.dp),
-                    )
-                    osdMetrics.let { selected ->
+                MiuixCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(Icons.Rounded.Notifications, MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("OSD 显示项", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "已选 ${osdMetrics.size} / ${OsdMetric.entries.size} 项，轻点切换；面板上轻点可循环透明度",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         OsdMetric.entries.forEach { metric ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onOsdMetricsChange(
-                                            if (selected.contains(metric)) selected - metric else selected + metric,
-                                        )
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                MiuixCheckbox(
-                                    state = ToggleableState(selected.contains(metric)),
-                                    onClick = {
-                                        onOsdMetricsChange(
-                                            if (selected.contains(metric)) selected - metric else selected + metric,
-                                        )
-                                    },
-                                )
-                                Text(metric.label, style = MaterialTheme.typography.bodyMedium)
-                            }
+                            SelectChip(
+                                text = metric.label,
+                                selected = osdMetrics.contains(metric),
+                                onClick = {
+                                    onOsdMetricsChange(
+                                        if (osdMetrics.contains(metric)) osdMetrics - metric else osdMetrics + metric,
+                                    )
+                                },
+                            )
                         }
                     }
                 }
@@ -1806,21 +1928,15 @@ private fun SettingsScreen(
 }
 
 @Composable
-private fun SelectChip(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun CardInnerDivider(startPadding: Dp = 16.dp) {
     Box(
         Modifier
-            .clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 9.dp),
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
-    }
+            .fillMaxWidth()
+            .padding(start = startPadding, end = 16.dp)
+            .height(1.dp)
+            // 与 MIUIX ActionRow 用同一条分隔线色，卡片内不会出现两种灰
+            .background(MiuixTheme.colorScheme.dividerLine),
+    )
 }
 
 // ---------- 详情页 ----------
@@ -1957,7 +2073,7 @@ private fun DetailPage(
                                             .fillMaxWidth()
                                             .padding(start = 56.dp)
                                             .height(1.dp)
-                                            .background(MaterialTheme.colorScheme.outlineVariant),
+                                            .background(MiuixTheme.colorScheme.dividerLine),
                                     )
                                 }
                             }
@@ -2156,8 +2272,10 @@ private fun DrawScope.drawSingleZoneChart(
 
     val maxPower = max(1L, samples.maxOfOrNull { it.effectivePowerUw() } ?: 1L)
 
-    niceTicks(maxPower.toFloat(), yTickCount).forEach { value ->
-        val y = bottom - (value / maxPower) * chartHeight
+    val ticks = niceTicks(maxPower.toFloat(), yTickCount)
+    val axisMaxPower = ticks.last().coerceAtLeast(1e-6f)
+    ticks.forEach { value ->
+        val y = bottom - (value / axisMaxPower) * chartHeight
         drawLine(colors.grid, Offset(left, y), Offset(right, y), strokeWidth = 1f)
         drawContext.canvas.nativeCanvas.drawText(uwToW(value.toLong()), 0f, y + 8f, textPaint)
     }
@@ -2173,7 +2291,7 @@ private fun DrawScope.drawSingleZoneChart(
     val path = Path()
     samples.forEachIndexed { index, sample ->
         val x = left + ((sample.timestampMs - minTs).toFloat() / durationMs) * chartWidth
-        val y = bottom - (sample.effectivePowerUw().toFloat() / maxPower) * chartHeight
+        val y = bottom - (sample.effectivePowerUw().toFloat() / axisMaxPower) * chartHeight
         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
     drawPath(path, lineColor, style = Stroke(width = 3f, cap = StrokeCap.Round))
@@ -2181,7 +2299,7 @@ private fun DrawScope.drawSingleZoneChart(
     selectedIndex?.let { index ->
         val sample = samples.getOrNull(index) ?: return@let
         val x = left + ((sample.timestampMs - minTs).toFloat() / durationMs) * chartWidth
-        val y = bottom - (sample.effectivePowerUw().toFloat() / maxPower) * chartHeight
+        val y = bottom - (sample.effectivePowerUw().toFloat() / axisMaxPower) * chartHeight
         drawLine(colors.crosshair, Offset(x, top), Offset(x, bottom), strokeWidth = 1.5f)
         drawLine(colors.crosshair, Offset(left, y), Offset(right, y), strokeWidth = 1.5f)
         drawCircle(lineColor, 7f, Offset(x, y))

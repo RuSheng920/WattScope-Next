@@ -1,19 +1,27 @@
 package io.github.rusheng920.wattscope.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,8 +34,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.ui.theme.LocalStatusColors
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -172,7 +190,14 @@ fun SegmentedControl(
     )
 }
 
-/** 主按钮用 MIUIX Button；次要操作用 MIUIX TextButton。 */
+/**
+ * 主按钮用 MIUIX Button；次要操作用 MIUIX TextButton。
+ *
+ * 圆角刻意给一个远大于按钮高度的值：`RoundedCornerShape` 会按实际高度把半径
+ * clamp 到 min(w,h)/2，因此无论系统字体放大到多少、按钮被撑高到什么尺寸，
+ * 轮廓始终是完整药丸，不会退化成「圆角矩形」。
+ * 文本强制单行，宽度不足时裁切而不是换行 —— 换行会把按钮撑成两倍高。
+ */
 @Composable
 fun PillButton(
     text: String,
@@ -183,17 +208,24 @@ fun PillButton(
     height: Dp = 44.dp,
     horizontalPadding: Dp = 20.dp,
 ) {
+    val pillRadius = 1000.dp
     if (filled) {
         Button(
             onClick = onClick,
             modifier = modifier,
             enabled = enabled,
-            cornerRadius = height / 2,
+            cornerRadius = pillRadius,
             minWidth = 56.dp,
             minHeight = height,
             insideMargin = PaddingValues(horizontal = horizontalPadding, vertical = 0.dp),
         ) {
-            Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(
+                text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     } else {
         TextButton(
@@ -201,6 +233,7 @@ fun PillButton(
             onClick = onClick,
             modifier = modifier,
             enabled = enabled,
+            cornerRadius = pillRadius,
             minWidth = 48.dp,
             minHeight = height,
             insideMargin = PaddingValues(horizontal = horizontalPadding, vertical = 0.dp),
@@ -254,69 +287,145 @@ fun MiuixBottomBar(
 }
 
 /**
- * 悬浮液态玻璃底栏。
+ * 悬浮液态玻璃底栏（社区 Backdrop 实现）。
  *
- * 以 MIUIX [FloatingNavigationBar] 为骨架（HyperOS 原生悬浮 Dock），
- * 背景换成自绘的「底色 + 斜向高光 + 亮边」三层玻璃：
- * 底色由 [intensity] 控制不透明度（三档），高光只加一层静态渐变，
- * 不做实时高斯模糊 —— 底栏常驻，逐帧模糊会让 GPU 持续工作，污染功耗测量。
+ * 背景不是自绘渐变，而是 [com.kyant.backdrop] 的 `drawBackdrop`：
+ * 从 [backdrop] 采样真实屏幕内容 → 提纯饱和度 → 轻微高斯模糊 → `lens` 边缘折射
+ * （AGSL RuntimeShader，含色散）→ 高光 + 内阴影，再叠一层很薄的表面着色。
+ * 参考实现：Kyant0/AndroidLiquidGlass 的 LiquidBottomTabs / LiquidButton。
  *
- * @param dark 深色主题用近黑玻璃 + 白色高光，浅色主题用白玻璃 + 淡淡投影
+ * **通透度的关键不是「多模糊」，而是「少刷白」**：
+ * 参考实现用 2–8dp 模糊、5%–18% 着色，靠折射与高光表现玻璃厚度；
+ * 之前 6–17dp 模糊叠加 26%–56% 白色着色，透光被吃掉，观感就成了磨砂亚克力。
+ * 这里把着色压到 5%–18%，并用 `colorControls` 把背景饱和度提到 1.7，
+ * 玻璃后的内容仍然「有颜色地」透出来，而不是一层灰雾。
+ *
+ * [live] = false 时退化为静态玻璃（零 GPU 模糊）：本应用用于测量功耗，
+ * 记录期间必须避免自身 UI 的逐帧模糊污染数据；静态版只补很薄的一层底，
+ * 因为应用内容本身与主题一致（浅色页白卡、深色页黑卡），文字不依赖底色对比。
+ *
+ * @param backdrop 由内容层注册的 [LayerBackdrop]；为 null 时同样走静态降级
+ * @param dark 深色主题用近黑冷调玻璃，浅色主题用带蓝调的白玻璃
  */
 @Composable
 fun FloatingGlassBottomBar(
     items: List<BottomItem>,
     selected: Int,
     onSelect: (Int) -> Unit,
+    backdrop: LayerBackdrop?,
     intensity: GlassIntensity,
     dark: Boolean,
+    live: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val tint = if (dark) {
-        Color(0xFF0E1518).copy(alpha = intensity.tintAlpha)
-    } else {
-        Color(0xFFF8FBFF).copy(alpha = intensity.tintAlpha)
+    val radius = 28.dp
+    val shape = RoundedCornerShape(radius)
+
+    // 表面着色：真实玻璃的自着色很淡，只留够文字可读的一点点底
+    val surface = if (dark) Color(0xFF0B0F13) else Color(0xFFF8FBFF)
+    val surfaceAlpha = intensity.tintAlpha.coerceIn(0f, 0.9f)
+    // 玻璃厚度的斜向高光：只保留极淡一层，否则整块会发灰
+    val sheen = if (dark) Color.White else Color(0xFFDCE9FB)
+    val sheenAlpha = when (intensity) {
+        GlassIntensity.LIGHT -> 0.05f
+        GlassIntensity.STANDARD -> 0.07f
+        GlassIntensity.STRONG -> 0.10f
     }
-    val highlight = when (intensity) {
-        GlassIntensity.LIGHT -> 0.10f
-        GlassIntensity.STANDARD -> 0.16f
-        GlassIntensity.STRONG -> 0.24f
+    // 浅色主题用高亮白边模拟玻璃切面；深色主题用低透明白边
+    val border = if (dark) Color.White.copy(alpha = 0.26f) else Color.White.copy(alpha = 0.92f)
+
+    // 整个玻璃 modifier 用 remember 固定：effects / highlight / shadow 都是 lambda，
+    // 每次重组新建会让 DrawBackdropNode 认为参数变化而重建 RenderEffect。
+    // 主页每秒都会刷新采样数据，不缓存会造成每秒多次重建 shader。
+    val glassModifier = remember(modifier, backdrop, intensity, dark, live) {
+        if (backdrop != null && live) {
+            modifier.drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = {
+                    // 先提纯再模糊：玻璃后的内容保持饱和，才不会被「洗成灰雾」
+                    colorControls(brightness = 0.02f, contrast = 1.03f, saturation = 1.7f)
+                    blur(intensity.blurRadiusDp.dp.toPx())
+                    lens(
+                        refractionHeight = intensity.refractionHeightDp.dp.toPx(),
+                        refractionAmount = intensity.refractionAmountDp.dp.toPx(),
+                        chromaticAberration = true,
+                    )
+                },
+                // 默认高光是沿整条边缘的柔和环境光，比「画一根 0.8dp 白线」更像玻璃切面
+                highlight = { Highlight.Default },
+                shadow = {
+                    Shadow(
+                        radius = 20.dp,
+                        offset = DpOffset(0.dp, 9.dp),
+                        color = Color.Black.copy(alpha = if (dark) 0.55f else 0.14f),
+                    )
+                },
+                // 内阴影让玻璃看起来有厚度，而不是一张贴纸
+                innerShadow = {
+                    InnerShadow(
+                        radius = 7.dp,
+                        offset = DpOffset(0.dp, 1.dp),
+                        alpha = if (dark) 0.55f else 0.20f,
+                    )
+                },
+                onDrawSurface = {
+                    drawRect(surface.copy(alpha = surfaceAlpha))
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                sheen.copy(alpha = sheenAlpha),
+                                Color.Transparent,
+                                sheen.copy(alpha = sheenAlpha * 0.5f),
+                            ),
+                            start = Offset.Zero,
+                            end = Offset(size.width, size.height),
+                        ),
+                    )
+                },
+            )
+        } else {
+            // 静态降级：零模糊、零 shader，轮廓与液态版本保持一致。
+            // 没有模糊时仍然可以很透：应用内容本身就是主题一致的（浅色页白卡、深色页黑卡），
+            // 底栏文字用自己的前景色，不依赖底色对比，所以只补一点点底即可。
+            modifier.drawBehind {
+                val r = CornerRadius(radius.toPx())
+                drawRoundRect(
+                    color = surface.copy(alpha = (surfaceAlpha + 0.18f).coerceIn(0f, 0.94f)),
+                    cornerRadius = r,
+                )
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            sheen.copy(alpha = sheenAlpha * 1.6f),
+                            Color.Transparent,
+                            sheen.copy(alpha = sheenAlpha),
+                        ),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    ),
+                    cornerRadius = r,
+                )
+                val inset = 0.5.dp.toPx()
+                drawRoundRect(
+                    color = border,
+                    topLeft = Offset(inset, inset),
+                    size = Size((size.width - inset * 2).coerceAtLeast(0f), (size.height - inset * 2).coerceAtLeast(0f)),
+                    cornerRadius = CornerRadius((radius.toPx() - inset).coerceAtLeast(0f)),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
+        }
     }
-    // 浅色玻璃用冷色高光 + 灰蓝亮边，纯白在浅色页面上会完全看不见边界
-    val sheen = if (dark) Color.White else Color(0xFFCFE3FF)
-    val border = if (dark) Color.White.copy(alpha = 0.20f) else Color(0xFFD5E1F0).copy(alpha = 0.95f)
-    val radius = 26.dp
 
     FloatingNavigationBar(
-        modifier = modifier.drawBehind {
-            val r = radius.toPx()
-            // 斜向高光：模拟玻璃厚度的光程差，左上亮、右下暗
-            drawRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        sheen.copy(alpha = highlight),
-                        Color.Transparent,
-                        sheen.copy(alpha = highlight * 0.35f),
-                    ),
-                    start = Offset.Zero,
-                    end = Offset(size.width, size.height),
-                ),
-                size = size,
-            )
-            // 1dp 亮边：任意壁纸/内容上都保持边界清晰
-            val inset = 0.5.dp.toPx()
-            drawRoundRect(
-                color = border,
-                topLeft = Offset(inset, inset),
-                size = Size((size.width - inset * 2).coerceAtLeast(0f), (size.height - inset * 2).coerceAtLeast(0f)),
-                cornerRadius = CornerRadius(r - inset, r - inset),
-                style = Stroke(width = 1.dp.toPx()),
-            )
-        },
-        color = tint,
-        cornerRadius = radius,
+        // cornerRadius = 0 让 MIUIX 不做 clip / 不画背景，
+        // 圆角轮廓与投影全部交给 drawBackdrop，否则阴影会被裁剪掉。
+        modifier = glassModifier,
+        color = Color.Transparent,
+        cornerRadius = 0.dp,
         horizontalOutSidePadding = 20.dp,
-        shadowElevation = 10.dp,
+        shadowElevation = 0.dp,
         mode = FloatingNavigationBarDisplayMode.IconAndText,
     ) {
         items.forEachIndexed { index, item ->
@@ -328,5 +437,87 @@ fun FloatingGlassBottomBar(
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
         }
+    }
+}
+
+/**
+ * 可选中的胶囊标签：单选（采样间隔）与多选（OSD 指标）共用。
+ *
+ * 选中态用主题主色实心 + 白色文字 + 勾选图标，
+ * 未选中态用 `surfaceContainerHigh`，在浅色页面上与卡片有清晰层次。
+ */
+@Composable
+fun SelectChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier
+            .clip(CircleShape)
+            .background(if (selected) colors.primary else colors.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (selected) {
+            Icon(
+                Icons.Rounded.Check,
+                contentDescription = null,
+                tint = colors.onPrimary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) colors.onPrimary else colors.onSurfaceVariantSummary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 空状态：圆形图标 + 标题 + 说明，避免列表为空时只剩一行灰字。 */
+@Composable
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(colors.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = colors.onSurfaceVariantSummary,
+                modifier = Modifier.size(26.dp),
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            description,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariantSummary,
+            textAlign = TextAlign.Center,
+        )
     }
 }

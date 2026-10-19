@@ -13,6 +13,7 @@ import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.data.repo.MonitorRepository
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
@@ -44,12 +45,16 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     /** 悬浮玻璃底栏与玻璃浓度。 */
     val glassBottomBar: StateFlow<Boolean> = repository.glassBottomBarFlow
     val glassIntensity: StateFlow<GlassIntensity> = repository.glassIntensityFlow
+    val glassPauseRecording: StateFlow<Boolean> = repository.glassPauseRecordingFlow
 
     /** 首次安装引导是否完成。 */
     val onboardingDone: StateFlow<Boolean> = repository.onboardingDoneFlow
 
     /** 悬浮窗开关状态（Compose 可观察，写入即响应）。 */
     val bubbleEnabled: StateFlow<Boolean> = repository.bubbleEnabledFlow
+
+    /** 悬浮球尺寸档位。 */
+    val bubbleSize: StateFlow<BubbleSize> = repository.bubbleSizeFlow
 
     /** OSD 悬浮窗开关与显示项。 */
     val osdEnabled: StateFlow<Boolean> = repository.osdEnabledFlow
@@ -68,6 +73,7 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun setThemeMode(mode: ThemeMode) = repository.setThemeMode(mode)
     fun setGlassBottomBar(enabled: Boolean) = repository.setGlassBottomBar(enabled)
     fun setGlassIntensity(intensity: GlassIntensity) = repository.setGlassIntensity(intensity)
+    fun setGlassPauseRecording(paused: Boolean) = repository.setGlassPauseRecording(paused)
     fun refreshPermissions() = repository.refreshPermissions()
 
     /** 申请 root：授权成功后立即重扫设备能力，不需要重启应用。 */
@@ -84,6 +90,7 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun deleteRecord(id: Long) = viewModelScope.launch { repository.deleteRecord(id) }
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
     fun setOsdEnabled(enabled: Boolean) { repository.osdEnabled = enabled }
+    fun setBubbleSize(size: BubbleSize) { repository.bubbleSize = size }
     fun setOsdMetrics(metrics: List<OsdMetric>) = repository.setOsdMetrics(metrics)
     fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
     fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }

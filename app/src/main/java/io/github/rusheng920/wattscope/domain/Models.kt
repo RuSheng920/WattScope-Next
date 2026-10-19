@@ -35,12 +35,41 @@ enum class ThemeMode(val key: String, val label: String) {
 
 /**
  * 液态玻璃浓度：只作用于应用内悬浮底栏。
- * [tintAlpha] 是玻璃底色不透明度，数值越大越「浓」，透出的内容越少。
+ *
+ * 由 [com.kyant.backdrop]（社区 Backdrop 库）渲染真实玻璃：
+ * [tintAlpha] 是表面着色不透明度（保证文字可读），
+ * [blurRadiusDp] 是背景模糊半径，[refractionHeightDp] / [refractionAmountDp]
+ * 控制边缘折射带的高度与强度（AGSL RuntimeShader，API 33+）。
+ *
+ * 参数取向参考 Kyant0/AndroidLiquidGlass 的 LiquidButton / LiquidBottomTabs：
+ * 玻璃「通透」来自**低模糊 + 低着色 + 边缘折射**，而不是高模糊 + 高白度。
+ * 早先 6–17dp 模糊叠加 26%–56% 白色着色，透光被吃掉，观感就是磨砂亚克力；
+ * 现在把模糊压到 2–8dp、着色压到 5%–18%，靠折射与高光表现玻璃厚度。
  */
-enum class GlassIntensity(val key: String, val label: String, val tintAlpha: Float) {
-    LIGHT("light", "轻盈", 0.58f),
-    STANDARD("standard", "标准", 0.74f),
-    STRONG("strong", "浓郁", 0.90f),
+enum class GlassIntensity(
+    val key: String,
+    val label: String,
+    val tintAlpha: Float,
+    val blurRadiusDp: Float,
+    val refractionHeightDp: Float,
+    val refractionAmountDp: Float,
+) {
+    LIGHT("light", "轻盈", 0.05f, 2f, 10f, 16f),
+    STANDARD("standard", "标准", 0.10f, 4f, 14f, 24f),
+    STRONG("strong", "浓郁", 0.18f, 8f, 18f, 32f),
+}
+
+/**
+ * 悬浮球尺寸档位（窗口尺寸，含渐变出血的 5dp 边距，实际球体比它小 10dp）。
+ *
+ * 悬浮球是常驻浮层，默认 48dp 窗口 / 38dp 球体，比旧版 52dp 实心圆明显更小；
+ * 需要更不挡内容时可切到「迷你」，手指粗或需要更大命中率时切到「大」。
+ * 尺寸改动由服务监听偏好实时应用，无需重启。
+ */
+enum class BubbleSize(val key: String, val label: String, val sizeDp: Int) {
+    MINI("mini", "迷你", 40),
+    STANDARD("standard", "标准", 48),
+    LARGE("large", "大", 56),
 }
 
 enum class SamplingInterval(val millis: Long, val label: String) {
@@ -165,18 +194,24 @@ data class OsdSample(
     val devicePowerUw: Long? = null,
 ) {
     /** 将指定监控项格式化为 "标签 值单位" 展示文本；无数据返回 null。 */
-    fun format(metric: OsdMetric): String? = when (metric) {
-        OsdMetric.SOC_POWER -> socPowerUw?.let { "SOC ${uwToW(it)}" }
-        OsdMetric.CPU_L_POWER -> cpuLPowerUw?.let { "CPU-L ${uwToW(it)}" }
-        OsdMetric.CPU_M_POWER -> cpuMPowerUw?.let { "CPU-M ${uwToW(it)}" }
-        OsdMetric.GPU_POWER -> gpuPowerUw?.let { "GPU ${uwToW(it)}" }
-        OsdMetric.GPU_FREQ -> gpuFreqHz?.let { "GPU ${freqToStr(it)}" }
-        OsdMetric.FPS -> fps?.let { "FPS ${"%.0f".format(it)}" }
-        OsdMetric.CPU_TEMP -> cpuTempC?.let { "CPU ${"%.0f".format(it)}℃" }
-        OsdMetric.GPU_TEMP -> gpuTempC?.let { "GPU ${"%.0f".format(it)}℃" }
-        OsdMetric.DDR_TEMP -> ddrTempC?.let { "DDR ${"%.0f".format(it)}℃" }
-        OsdMetric.GPU_USAGE -> gpuUsagePercent?.let { "GPU ${"%.0f".format(it)}%" }
-        OsdMetric.DEVICE_POWER -> devicePowerUw?.let { "整机 ${uwToW(it)}" }
+    fun format(metric: OsdMetric): String? = value(metric)?.let { "${metric.label} $it" }
+
+    /**
+     * 只取值与单位（不含标签）：OSD 面板把标签和数值分两列排版，
+     * 数值列右对齐等宽显示，位数变化时不会带动标签列抖动。
+     */
+    fun value(metric: OsdMetric): String? = when (metric) {
+        OsdMetric.SOC_POWER -> socPowerUw?.let(::uwToW)
+        OsdMetric.CPU_L_POWER -> cpuLPowerUw?.let(::uwToW)
+        OsdMetric.CPU_M_POWER -> cpuMPowerUw?.let(::uwToW)
+        OsdMetric.GPU_POWER -> gpuPowerUw?.let(::uwToW)
+        OsdMetric.GPU_FREQ -> gpuFreqHz?.let(::freqToStr)
+        OsdMetric.FPS -> fps?.let { "%.0f fps".format(it) }
+        OsdMetric.CPU_TEMP -> cpuTempC?.let { "%.0f℃".format(it) }
+        OsdMetric.GPU_TEMP -> gpuTempC?.let { "%.0f℃".format(it) }
+        OsdMetric.DDR_TEMP -> ddrTempC?.let { "%.0f℃".format(it) }
+        OsdMetric.GPU_USAGE -> gpuUsagePercent?.let { "%.0f%%".format(it) }
+        OsdMetric.DEVICE_POWER -> devicePowerUw?.let(::uwToW)
     }
 
     private fun uwToW(uw: Long): String = "%.2fW".format(uw / 1_000_000.0)

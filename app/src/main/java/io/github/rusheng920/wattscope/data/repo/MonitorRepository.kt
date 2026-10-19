@@ -29,6 +29,7 @@ import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.domain.ClusterFreqSample
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.CoreUsageSample
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
@@ -121,6 +122,21 @@ class MonitorRepository(
             _bubbleEnabled.value = value
         }
 
+    /** 悬浮球尺寸：服务订阅该 Flow，切换档位后立即 resize，不必重启服务。 */
+    private val _bubbleSize = MutableStateFlow(
+        prefs.getString("bubble_size", null)
+            ?.let { key -> BubbleSize.entries.firstOrNull { it.key == key } }
+            ?: BubbleSize.STANDARD,
+    )
+    val bubbleSizeFlow: StateFlow<BubbleSize> = _bubbleSize.asStateFlow()
+
+    var bubbleSize: BubbleSize
+        get() = _bubbleSize.value
+        set(value) {
+            prefs.edit().putString("bubble_size", value.key).apply()
+            _bubbleSize.value = value
+        }
+
     // OSD 悬浮窗：开关 + 实时数据（不落库）
     private val _osdEnabled = MutableStateFlow(prefs.getBoolean("osd_enabled", false))
     val osdEnabledFlow: StateFlow<Boolean> = _osdEnabled.asStateFlow()
@@ -143,6 +159,15 @@ class MonitorRepository(
     val glassIntensityFlow: StateFlow<GlassIntensity> = _glassIntensity.asStateFlow()
 
     /**
+     * 记录期间是否暂停实时模糊。
+     *
+     * 液态玻璃依赖 RenderEffect + RuntimeShader，逐帧模糊会持续占用 GPU；
+     * 本应用的用途就是测量功耗，因此默认在记录时降级为静态玻璃，避免测量结果被自身 UI 污染。
+     */
+    private val _glassPauseRecording = MutableStateFlow(prefs.getBoolean("glass_pause_recording", true))
+    val glassPauseRecordingFlow: StateFlow<Boolean> = _glassPauseRecording.asStateFlow()
+
+    /**
      * 首次安装引导是否完成。
      * 未完成时不探测 root、不启动 QPT 采样，避免应用一打开就弹授权框。
      */
@@ -162,6 +187,11 @@ class MonitorRepository(
     fun setGlassIntensity(intensity: GlassIntensity) {
         prefs.edit().putString("glass_intensity", intensity.key).apply()
         _glassIntensity.value = intensity
+    }
+
+    fun setGlassPauseRecording(paused: Boolean) {
+        prefs.edit().putBoolean("glass_pause_recording", paused).apply()
+        _glassPauseRecording.value = paused
     }
 
     private fun loadThemeMode(): ThemeMode =

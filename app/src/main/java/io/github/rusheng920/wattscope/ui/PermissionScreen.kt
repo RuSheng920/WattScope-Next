@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,15 +47,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.rusheng920.wattscope.domain.AppPermissions
-import io.github.rusheng920.wattscope.ui.components.ActionRow
+import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixCard
 import io.github.rusheng920.wattscope.ui.components.PillButton
 import io.github.rusheng920.wattscope.ui.components.PillTone
 import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.StatusPill
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -369,9 +374,18 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                MiuixTextButton(text = "稍后设置", onClick = onSkip)
-                Spacer(Modifier.weight(1f))
-                PillButton(text = "完成，进入应用", onClick = onFinish)
+                // 两个按钮按权重分配宽度：窄屏或大字体下也不会互相挤压成畸形
+                MiuixTextButton(
+                    text = "稍后设置",
+                    onClick = onSkip,
+                    modifier = Modifier.weight(1f),
+                )
+                PillButton(
+                    text = "完成，进入应用",
+                    onClick = onFinish,
+                    modifier = Modifier.weight(1.7f),
+                    horizontalPadding = 12.dp,
+                )
             }
         }
     }
@@ -457,7 +471,16 @@ fun ProgressBar(fraction: Float, color: Color = MaterialTheme.colorScheme.primar
     }
 }
 
-/** 单条权限行：状态胶囊 + 操作按钮，未授予时按钮高亮。 */
+/**
+ * 单条权限行：图标 + 标题/副标题 + 状态胶囊 + 操作按钮。
+ *
+ * 这里刻意不再复用 `ActionRow`（MIUIX BasicComponent）：它把 endActions 的宽度
+ * 按行宽 30% 分配，状态胶囊和按钮一起塞进去必然被压缩 —— 按钮被压扁成
+ * 「圆角矩形」、文字被裁断，正是之前 DPI / 字体缩放下的变形来源。
+ *
+ * 现在按钮是 Row 的固定尺寸子项（完全按自身内容测量，不参与权重分配），
+ * 文本列用 `weight(1f)` 让出空间；极窄屏时状态胶囊下移到副标题下，标题不被挤掉。
+ */
 @Composable
 private fun PermissionRow(
     title: String,
@@ -471,26 +494,64 @@ private fun PermissionRow(
     actionFilled: Boolean = tone != PillTone.OK,
     showDivider: Boolean = false,
 ) {
-    ActionRow(
-        title = title,
-        subtitle = subtitle,
-        icon = icon,
-        iconTint = iconTint,
-        showDivider = showDivider,
-        trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusPill(statusText, tone)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // 行宽不足 350dp（约 360dp 屏幕扣掉页边距，或大字体）时把胶囊换行，
+        // 保证标题与按钮都拿到足够宽度，而不是互相挤压
+        val compact = maxWidth < 350.dp
+        Column(Modifier.fillMaxWidth()) {
+            if (showDivider) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 60.dp, end = 16.dp),
+                    color = MiuixTheme.colorScheme.dividerLine,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconBadge(icon, iconTint)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (!compact) {
+                            Spacer(Modifier.width(6.dp))
+                            StatusPill(statusText, tone)
+                        }
+                    }
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = if (compact) 3 else 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (compact) {
+                        Spacer(Modifier.height(2.dp))
+                        StatusPill(statusText, tone)
+                    }
+                }
                 if (actionText != null) {
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(10.dp))
                     PillButton(
                         text = actionText,
                         onClick = onAction,
                         filled = actionFilled,
-                        height = 32.dp,
-                        horizontalPadding = 13.dp,
+                        height = 34.dp,
+                        horizontalPadding = 12.dp,
+                        modifier = Modifier.widthIn(min = 76.dp),
                     )
                 }
             }
-        },
-    )
+        }
+    }
 }

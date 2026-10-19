@@ -1,49 +1,67 @@
 package io.github.rusheng920.wattscope.service
 
+import android.animation.ValueAnimator
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
+import android.graphics.drawable.RippleDrawable
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import io.github.rusheng920.wattscope.QptApplication
+import io.github.rusheng920.wattscope.R
+import io.github.rusheng920.wattscope.domain.BubbleSize
+import io.github.rusheng920.wattscope.domain.OsdSample
+import io.github.rusheng920.wattscope.service.overlay.GlassBubbleView
+import io.github.rusheng920.wattscope.service.overlay.OsdCardView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class QptMonitorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var windowManager: WindowManager
-    private var bubble: TextView? = null
+    private var bubble: GlassBubbleView? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
     private var panel: LinearLayout? = null
-    private var osdRoot: LinearLayout? = null
-    private var osdText: TextView? = null
-    private var qptStatusText: TextView? = null
-    private var bubbleStatusText: TextView? = null
-    private var lastTap = 0L
+    private var panelLiveText: TextView? = null
+    private var panelQptText: TextView? = null
+    private var panelBubbleText: TextView? = null
+    private var panelOsdText: TextView? = null
+    private var osdCard: OsdCardView? = null
+    private var osdParams: WindowManager.LayoutParams? = null
     private var bubbleShownAtMs = 0L
-    private var menuMode = false
     private var osdSampleJob: Job? = null
+    private var panelLiveJob: Job? = null
+    private var lastTap = 0L
+
+    /** 浮层位置/透明度等纯窗口状态，不参与业务持久化，单独存一个私有偏好。 */
+    private val overlayPrefs by lazy { getSharedPreferences("overlay_state", Context.MODE_PRIVATE) }
 
     private val repository by lazy { (application as QptApplication).repository }
 
@@ -51,12 +69,13 @@ class QptMonitorService : Service() {
         super.onCreate()
         windowManager = getSystemService()!!
         createChannel()
-        startForeground(1, notification("QPT 悬浮窗运行中"))
+        startForeground(1, notification("悬浮窗运行中"))
         // 先显示气泡（若偏好开启），设备状态刷新并行进行
         if (Settings.canDrawOverlays(this) && repository.bubbleEnabled) {
             showBubble()
-            observeRecordingState()
         }
+        observeRecordingState()
+        observeBubbleSize()
         scope.launch {
             repository.refreshDeviceState()
             if (Settings.canDrawOverlays(this@QptMonitorService) && repository.osdEnabled) showOsd()
@@ -67,7 +86,7 @@ class QptMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_SHOW_BUBBLE -> if (Settings.canDrawOverlays(this) && repository.bubbleEnabled) showBubble()
-            ACTION_HIDE_BUBBLE -> bubble?.let { windowManager.removeView(it); bubble = null }
+            ACTION_HIDE_BUBBLE -> hideBubble()
             ACTION_TOGGLE_PANEL -> togglePanel()
             ACTION_TOGGLE_OSD -> {
                 repository.osdEnabled = !repository.osdEnabled
@@ -87,55 +106,49 @@ class QptMonitorService : Service() {
     }
 
     override fun onDestroy() {
-        bubble?.let { windowManager.removeView(it) }
-        panel?.let { windowManager.removeView(it) }
-        osdRoot?.let { windowManager.removeView(it) }
+        hideBubble(immediate = true)
+        hidePanel()
+        hideOsd()
         scope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ---------- OSD 悬浮窗（竖排、≤1/3 屏宽、不记录） ----------
+    // ---------- OSD 悬浮窗（两列 HUD，可拖动、轻点切换透明度、不记录） ----------
 
     private fun showOsd() {
-        if (osdRoot != null) return
+        if (osdCard != null) return
+        if (!Settings.canDrawOverlays(this)) {
+            toast("请先在权限中心授予悬浮窗权限")
+            return
+        }
         val density = resources.displayMetrics.density
         val screenW = resources.displayMetrics.widthPixels
-        // 宽度约 1/4 屏：中文标签 + 数值需要比纯英文更宽，过窄会换行破坏对齐
-        val width = (screenW / 4.3f).toInt()
+        val screenH = resources.displayMetrics.heightPixels
+        // 两列排版（标签 + 右对齐数值）比单行拼串更宽：至少 140dp，常见屏幕上取 1/3.8 屏宽
+        val width = max((140 * density).toInt(), (screenW / 3.8f).toInt())
+        val card = OsdCardView(this)
+        card.setMetrics(repository.osdMetricsFlow.value)
+        card.alpha = osdAlpha()
+
         val params = WindowManager.LayoutParams(
             width,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = screenW - width - (12 * density).toInt()
-            y = (100 * density).toInt()
+            x = overlayPrefs.getInt(KEY_OSD_X, screenW - width - (12 * density).toInt())
+            y = overlayPrefs.getInt(KEY_OSD_Y, (100 * density).toInt())
+            x = x.coerceIn(0, max(0, screenW - width))
+            y = y.coerceIn(0, max(0, screenH - (120 * density).toInt()))
         }
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
-        }
-        root.background = roundedBackground(radiusDp = 16f, alpha = 0xE0)
-        osdText = TextView(this).apply {
-            textSize = 11.5f
-            setTextColor(0xFFEDF4FA.toInt())
-            setShadowLayer(5f, 0f, 1f, 0xB3000000.toInt())
-            typeface = android.graphics.Typeface.create(
-                android.graphics.Typeface.MONOSPACE,
-                android.graphics.Typeface.BOLD,
-            )
-            includeFontPadding = false
-            setLineSpacing(3f * density, 1f)
-        }
-        root.addView(osdText)
-        // 可拖动：移除 FLAG_NOT_TOUCHABLE 并挂接触摸监听
-        root.setOnTouchListener(OsdTouchListener(params))
-        windowManager.addView(root, params)
-        osdRoot = root
+        card.setOnTouchListener(OsdTouchListener(params))
+        windowManager.addView(card, params)
+        osdCard = card
+        osdParams = params
         observeOsdSample()
     }
 
@@ -143,18 +156,24 @@ class QptMonitorService : Service() {
         // 必须取消订阅：否则每次「关→开」都会多留一个永不退出的 collector
         osdSampleJob?.cancel()
         osdSampleJob = null
-        osdRoot?.let { windowManager.removeView(it); osdRoot = null }
-        osdText = null
+        osdCard?.let { runCatching { windowManager.removeView(it) } }
+        osdCard = null
+        osdParams = null
     }
 
     private fun observeOsdSample() {
         osdSampleJob?.cancel()
         osdSampleJob = scope.launch {
-            kotlinx.coroutines.flow.combine(repository.osdSample, repository.osdMetricsFlow) { sample, metrics ->
-                sample to metrics
-            }.collect { (sample, metrics) ->
-                osdText?.text = renderOsd(sample, metrics)
-            }
+            combine(
+                repository.osdSample,
+                repository.osdMetricsFlow,
+                repository.state.map { it.isRecording }.distinctUntilChanged(),
+            ) { sample, metrics, recording -> Triple(sample, metrics, recording) }
+                .collect { (sample, metrics, recording) ->
+                    val card = osdCard ?: return@collect
+                    card.setMetrics(metrics)
+                    card.bind(sample, recording)
+                }
         }
     }
 
@@ -167,76 +186,156 @@ class QptMonitorService : Service() {
         }
     }
 
-    private fun renderOsd(sample: io.github.rusheng920.wattscope.domain.OsdSample?, metrics: List<io.github.rusheng920.wattscope.domain.OsdMetric>): String =
-        metrics.mapNotNull { sample?.format(it) }.joinToString("\n").ifEmpty { "OSD\n等待数据…" }
+    /** OSD 三档透明度：全不透明 / 半透 / 极淡，轻点循环切换，方便避开被遮挡的内容。 */
+    private val osdAlphas = floatArrayOf(1f, 0.74f, 0.46f)
+
+    private fun osdAlpha(): Float = osdAlphas[overlayPrefs.getInt(KEY_OSD_ALPHA, 0).coerceIn(0, osdAlphas.lastIndex)]
+
+    private fun cycleOsdAlpha() {
+        val next = (overlayPrefs.getInt(KEY_OSD_ALPHA, 0) + 1) % osdAlphas.size
+        overlayPrefs.edit().putInt(KEY_OSD_ALPHA, next).apply()
+        osdCard?.animate()?.alpha(osdAlphas[next])?.setDuration(160)?.start()
+    }
+
+    // ---------- 悬浮球 ----------
 
     private fun showBubble() {
-        if (bubble != null) return
+        val existing = bubble
+        if (existing != null) {
+            applyBubbleSize(existing)
+            return
+        }
         bubbleShownAtMs = System.currentTimeMillis()
         val density = resources.displayMetrics.density
-        val size = (52 * density).toInt()
+        val size = bubbleSizePx(repository.bubbleSize)
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
         val params = WindowManager.LayoutParams(
             size,
             size,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 24
-            y = 220
+            x = overlayPrefs.getInt(KEY_BUBBLE_X, (16 * density).toInt())
+            y = overlayPrefs.getInt(KEY_BUBBLE_Y, (220 * density).toInt())
+            x = x.coerceIn(0, max(0, screenW - size))
+            y = y.coerceIn(0, max(0, screenH - size))
         }
-        bubble = TextView(this).apply {
-            text = "▶"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(0xFFFFFFFF.toInt())
-            setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
-            background = roundedBackground(radiusDp = size / 2f / density, alpha = 0xE6)
+        val view = GlassBubbleView(this).apply {
+            mode = if (repository.state.value.isRecording) GlassBubbleView.Mode.RECORDING else GlassBubbleView.Mode.IDLE
             setOnTouchListener(BubbleTouchListener(params))
         }
-        windowManager.addView(bubble, params)
+        windowManager.addView(view, params)
+        bubble = view
+        bubbleParams = params
+        scheduleIdleFade()
     }
 
-    /** 订阅记录状态，自动停止（离开应用）后气泡图标恢复 "▶"。 */
+    private fun hideBubble(immediate: Boolean = false) {
+        val view = bubble ?: return
+        bubble = null
+        bubbleParams = null
+        view.removeCallbacks(idleFade)
+        view.animate().cancel()
+        if (immediate) {
+            runCatching { windowManager.removeView(view) }
+        } else {
+            view.animate().alpha(0f).setDuration(140).withEndAction {
+                runCatching { windowManager.removeView(view) }
+            }.start()
+        }
+    }
+
+    private fun bubbleSizePx(size: BubbleSize): Int =
+        (size.sizeDp * resources.displayMetrics.density).roundToInt()
+
+    /** 尺寸偏好变化时原地 resize：保持球心位置不跳，重新夹取到屏幕内。 */
+    private fun applyBubbleSize(view: GlassBubbleView) {
+        val params = bubbleParams ?: return
+        val size = bubbleSizePx(repository.bubbleSize)
+        if (params.width == size && params.height == size) return
+        val centerX = params.x + params.width / 2
+        val centerY = params.y + params.height / 2
+        params.width = size
+        params.height = size
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        params.x = (centerX - size / 2).coerceIn(0, max(0, screenW - size))
+        params.y = (centerY - size / 2).coerceIn(0, max(0, screenH - size))
+        windowManager.updateViewLayout(view, params)
+        persistBubblePosition(params)
+    }
+
+    private fun observeBubbleSize() {
+        scope.launch {
+            repository.bubbleSizeFlow.collect { size ->
+                val view = bubble ?: return@collect
+                // 立即按新档位应用（Flow 首次发射时也会执行，等价于初始化）
+                val params = bubbleParams ?: return@collect
+                val px = bubbleSizePx(size)
+                if (params.width == px && params.height == px) return@collect
+                applyBubbleSize(view)
+            }
+        }
+    }
+
+    private fun persistBubblePosition(params: WindowManager.LayoutParams) {
+        overlayPrefs.edit().putInt(KEY_BUBBLE_X, params.x).putInt(KEY_BUBBLE_Y, params.y).apply()
+    }
+
+    /** 订阅记录状态：球体图标与状态环随记录状态切换。 */
     private fun observeRecordingState() {
         scope.launch {
             repository.state.map { it.isRecording }.distinctUntilChanged().collect { recording ->
-                bubble?.text = if (menuMode) "QPT" else if (recording) "■" else "▶"
+                bubble?.mode = if (recording) GlassBubbleView.Mode.RECORDING else GlassBubbleView.Mode.IDLE
+                if (recording) {
+                    // 记录中不淡出：状态要一直看得见
+                    bubble?.animate()?.alpha(1f)?.setDuration(160)?.start()
+                } else {
+                    scheduleIdleFade()
+                }
             }
         }
+    }
+
+    /**
+     * 闲置淡出：不记录且 7 秒没有操作时把悬浮球降到 55% 不透明度，
+     * 既保留可发现性，又不会在阅读/游戏时抢注意力。触摸即恢复。
+     */
+    private fun scheduleIdleFade() {
+        val view = bubble ?: return
+        view.removeCallbacks(idleFade)
+        view.postDelayed(idleFade, 7_000)
+    }
+
+    private val idleFade = Runnable {
+        if (repository.state.value.isRecording) return@Runnable
+        bubble?.animate()?.alpha(0.55f)?.setDuration(340)?.start()
+    }
+
+    private fun wakeBubble() {
+        val view = bubble ?: return
+        view.removeCallbacks(idleFade)
+        if (view.alpha < 1f) view.animate().alpha(1f).setDuration(140).start()
     }
 
     private fun toggleRecording() {
         scope.launch {
             if (repository.state.value.isRecording) {
                 repository.stopRecording()
-                bubble?.text = if (menuMode) "QPT" else "▶"
                 toast("停止记录")
             } else {
                 // 悬浮球启动记录：记录当前应用，离开该应用时自动停止
                 val ok = repository.startRecording(autoStopOnAppExit = true)
-                if (ok) {
-                    bubble?.text = if (menuMode) "QPT" else "■"
-                    toast("开始记录")
-                } else {
-                    toast("无法开始记录：无可用监控源")
-                }
+                toast(if (ok) "开始记录" else "无法开始记录：无可用监控源")
             }
         }
     }
 
     private fun toast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
-    }
-
-    private fun expandQuickMenu() {
-        menuMode = bubble?.text == "QPT"
-        bubble?.text = if (menuMode) {
-            if (repository.state.value.isRecording) "■" else "▶"
-        } else {
-            "QPT"
-        }
     }
 
     // ---------- 通知快捷控制面板（悬浮窗形式） ----------
@@ -247,121 +346,287 @@ class QptMonitorService : Service() {
 
     private fun showPanel() {
         if (panel != null) return
+        // 通知点开面板时若授权已被系统回收，直接 addView 会抛 SecurityException
+        if (!Settings.canDrawOverlays(this)) {
+            toast("请先在权限中心授予悬浮窗权限")
+            return
+        }
         val density = resources.displayMetrics.density
+        val width = (300 * density).toInt()
         val params = WindowManager.LayoutParams(
-            (300 * density).toInt(),
+            width,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = (160 * density).toInt()
+            y = (140 * density).toInt()
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding((18 * density).toInt(), (16 * density).toInt(), (18 * density).toInt(), (16 * density).toInt())
+            background = cardBackground(radiusDp = 24f)
         }
-        root.background = roundedBackground(radiusDp = 24f, alpha = 0xE6)
 
-        root.addView(TextView(this).apply {
-            text = "QPT 控制"
-            textSize = 17f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(0xFFFFFFFF.toInt())
-            setShadowLayer(4f, 0f, 1f, 0x80000000.toInt())
-        })
+        root.addView(
+            TextView(this).apply {
+                text = "WattScope 控制"
+                textSize = 16f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(0xFFF2F6FA.toInt())
+                includeFontPadding = false
+            },
+        )
+        panelLiveText = TextView(this).apply {
+            text = "读取实时数据…"
+            textSize = 12f
+            setTextColor(0xFF7FD9A8.toInt())
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            includeFontPadding = false
+            setPadding(0, (6 * density).toInt(), 0, 0)
+        }
+        root.addView(panelLiveText)
 
-        qptStatusText = panelStatusText()
-        root.addView(qptStatusText, lpWithMargin(density, 12))
-        root.addView(glassButton("切换 QPT 开关") {
+        root.addView(
+            View(this).apply { setBackgroundColor(0x1FFFFFFF) },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                topMargin = (14 * density).toInt()
+            },
+        )
+
+        panelQptText = panelRow(root, "QPT 总开关", density) {
             scope.launch {
                 repository.setQptEnabled(!repository.state.value.qptEnabled)
-                qptStatusText?.text = if (repository.state.value.qptEnabled) "QPT：已开启" else "QPT：已关闭"
+                refreshPanelState()
             }
-        }, lpWithMargin(density, 4))
-
-        bubbleStatusText = panelStatusText()
-        root.addView(bubbleStatusText, lpWithMargin(density, 12))
-        root.addView(glassButton("切换悬浮球") {
+        }
+        panelBubbleText = panelRow(root, "悬浮球", density) {
             val enabled = !repository.bubbleEnabled
             repository.bubbleEnabled = enabled
-            bubbleStatusText?.text = if (enabled) "悬浮球：已开启" else "悬浮球：已关闭"
             startService(
                 Intent(this@QptMonitorService, QptMonitorService::class.java)
                     .setAction(if (enabled) ACTION_SHOW_BUBBLE else ACTION_HIDE_BUBBLE),
             )
-        }, lpWithMargin(density, 4))
-
-        root.addView(glassButton("切换 OSD 悬浮窗") {
+            refreshPanelState()
+        }
+        panelOsdText = panelRow(root, "OSD 浮层", density) {
             repository.osdEnabled = !repository.osdEnabled
             if (repository.osdEnabled) showOsd() else hideOsd()
-            toast(if (repository.osdEnabled) "OSD 悬浮窗已开启" else "OSD 悬浮窗已关闭")
-        }, lpWithMargin(density, 12))
+            refreshPanelState()
+        }
 
-        root.addView(glassButton("关闭面板") { hidePanel() }, lpWithMargin(density, 10))
+        root.addView(
+            TextView(this).apply {
+                text = "关闭面板"
+                textSize = 13.5f
+                gravity = Gravity.CENTER
+                setTextColor(0xFFCAD6E1.toInt())
+                background = pillBackground(density, filled = false)
+                isClickable = true
+                isFocusable = true
+                setPadding(0, (11 * density).toInt(), 0, (11 * density).toInt())
+                setOnClickListener { hidePanel() }
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (12 * density).toInt()
+            },
+        )
 
         // 液态玻璃只用于应用内底栏：浮层保持纯色，不做实时模糊，
         // 避免 GPU 持续工作影响功耗测量精度，也避开 OEM 对浮层模糊支持不一致的问题。
         windowManager.addView(root, params)
         panel = root
         refreshPanelState()
+        bindPanelLive()
     }
 
-    private fun panelStatusText() = TextView(this).apply {
-        textSize = 12.5f
-        gravity = Gravity.CENTER
-        setTextColor(0xFFC3D1DE.toInt())
-    }
-
-    /** 面板内的胶囊按钮：与卡片同一套语言，避免混入系统默认 Holo 按钮。 */
-    private fun glassButton(text: String, onClick: () -> Unit) = TextView(this).apply {
-        this.text = text
-        textSize = 13.5f
-        gravity = Gravity.CENTER
-        setTextColor(0xFFF2F7FB.toInt())
-        background = roundedBackground(radiusDp = 22f, alpha = 0xB3)
-        isClickable = true
-        isFocusable = true
-        setPadding(0, (11 * resources.displayMetrics.density).toInt(), 0, (11 * resources.displayMetrics.density).toInt())
-        setOnClickListener { onClick() }
-    }
-
-    /**
-     * 浮层背景：纯色半透明 + 1dp 亮边 + 圆角。
-     *
-     * 液态玻璃只在应用内底栏使用；OSD/悬浮球是常驻浮层，保持纯色更省 GPU，
-     * 也不会让逐帧重绘的渐变影响功耗测量。
-     */
-    private fun roundedBackground(radiusDp: Float, alpha: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = radiusDp * resources.displayMetrics.density
-            setColor(Color.argb(alpha, 14, 21, 24))
-            setStroke((1 * resources.displayMetrics.density).roundToInt(), Color.argb(46, 255, 255, 255))
+    /** 一行「标题 —— 状态」的胶囊按钮，整行可点。 */
+    private fun panelRow(root: LinearLayout, title: String, density: Float, onClick: () -> Unit): TextView {
+        val row = TextView(this).apply {
+            text = title
+            textSize = 13.5f
+            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(0xFFF2F7FB.toInt())
+            background = pillBackground(density, filled = true)
+            isClickable = true
+            isFocusable = true
+            setPadding((14 * density).toInt(), (12 * density).toInt(), (14 * density).toInt(), (12 * density).toInt())
+            setOnClickListener { onClick() }
         }
+        root.addView(
+            row,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (8 * density).toInt()
+            },
+        )
+        return row
+    }
 
     private fun hidePanel() {
-        panel?.let { windowManager.removeView(it); panel = null }
+        panelLiveJob?.cancel()
+        panelLiveJob = null
+        panel?.let { runCatching { windowManager.removeView(it) } }
+        panel = null
+        panelLiveText = null
+        panelQptText = null
+        panelBubbleText = null
+        panelOsdText = null
+    }
+
+    /** 面板顶部实时读数：确认 QPT 是否真的在出数，比只显示开关状态有用。 */
+    private fun bindPanelLive() {
+        panelLiveJob?.cancel()
+        panelLiveJob = scope.launch {
+            combine(
+                repository.osdSample,
+                repository.state.map { it.isRecording }.distinctUntilChanged(),
+            ) { sample, recording -> sample to recording }
+                .collect { (sample, recording) ->
+                    val text = panelLiveText ?: return@collect
+                    text.text = renderLiveLine(sample, recording)
+                }
+        }
+    }
+
+    private fun renderLiveLine(sample: OsdSample?, recording: Boolean): String {
+        val prefix = if (recording) "● REC" else "○ 待机"
+        val soc = sample?.socPowerUw?.let { "%.2f W".format(it / 1_000_000.0) }
+        val fps = sample?.fps?.let { "%.0f fps".format(it) }
+        val parts = listOfNotNull(soc, fps)
+        return if (parts.isEmpty()) "$prefix · 等待数据" else "$prefix · ${parts.joinToString(" · ")}"
     }
 
     private fun refreshPanelState() {
-        scope.launch {
-            repository.refreshDeviceState()
-            qptStatusText?.text = if (repository.state.value.qptEnabled) "QPT：已开启" else "QPT：已关闭"
-            bubbleStatusText?.text = if (repository.bubbleEnabled) "悬浮窗：已开启" else "悬浮窗：已关闭"
+        qptStatus(panelQptText, "QPT 总开关", repository.state.value.qptEnabled)
+        qptStatus(panelBubbleText, "悬浮球", repository.bubbleEnabled)
+        qptStatus(panelOsdText, "OSD 浮层", repository.osdEnabled)
+    }
+
+    private fun qptStatus(view: TextView?, title: String, on: Boolean) {
+        view?.text = "$title  ${if (on) "已开启" else "已关闭"}"
+    }
+
+    // ---------- 背景与触摸 ----------
+
+    private fun cardBackground(radiusDp: Float): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(Color.argb(0xF7, 0x12, 0x19, 0x1F), Color.argb(0xF4, 0x08, 0x0C, 0x10)),
+    ).apply {
+        cornerRadius = radiusDp * resources.displayMetrics.density
+        setStroke(
+            (1 * resources.displayMetrics.density).roundToInt(),
+            Color.argb(0x2E, 0xFF, 0xFF, 0xFF),
+        )
+    }
+
+    /** 面板按钮：半透明白底 + 可按压水波纹，和深色面板同一套语言。 */
+    private fun pillBackground(density: Float, filled: Boolean): android.graphics.drawable.Drawable {
+        val shape = GradientDrawable().apply {
+            cornerRadius = 16 * density
+            setColor(if (filled) Color.argb(0x1F, 0xFF, 0xFF, 0xFF) else Color.argb(0x0F, 0xFF, 0xFF, 0xFF))
+            setStroke((1 * density).roundToInt(), Color.argb(0x24, 0xFF, 0xFF, 0xFF))
+        }
+        return RippleDrawable(ColorStateList.valueOf(Color.argb(0x33, 0xFF, 0xFF, 0xFF)), shape, null)
+    }
+
+    private inner class BubbleTouchListener(private val params: WindowManager.LayoutParams) :
+        View.OnTouchListener {
+        private var downX = 0
+        private var downY = 0
+        private var rawX = 0f
+        private var rawY = 0f
+        private var moved = false
+        private var downAt = 0L
+
+        override fun onTouch(v: View, event: MotionEvent): Boolean {
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = params.x
+                    downY = params.y
+                    rawX = event.rawX
+                    rawY = event.rawY
+                    moved = false
+                    downAt = System.currentTimeMillis()
+                    wakeBubble()
+                    v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(90).start()
+                    // 必须消费 DOWN，否则后续 MOVE/UP 不会派发给悬浮窗
+                    return true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - rawX).toInt()
+                    val dy = (event.rawY - rawY).toInt()
+                    if (abs(dx) > 6 || abs(dy) > 6) moved = true
+                    if (moved) {
+                        val screenW = resources.displayMetrics.widthPixels
+                        val screenH = resources.displayMetrics.heightPixels
+                        params.x = (downX + dx).coerceIn(0, max(0, screenW - params.width))
+                        params.y = (downY + dy).coerceIn(0, max(0, screenH - params.height))
+                        windowManager.updateViewLayout(v, params)
+                    }
+                    return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    val now = System.currentTimeMillis()
+                    // 忽略气泡刚创建时的异常触摸（窗口添加时的幽灵事件）
+                    if (now - bubbleShownAtMs < 1_500) return true
+                    if (moved) {
+                        snapToEdge(v, params)
+                    } else if (now - downAt >= 420) {
+                        showPanel()
+                    } else if (now - lastTap > 320) {
+                        lastTap = now
+                        toggleRecording()
+                    }
+                    scheduleIdleFade()
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    if (moved) snapToEdge(v, params)
+                    return true
+                }
+            }
+            return false
         }
     }
 
-    private fun lpWithMargin(density: Float, top: Int) =
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = (top * density).toInt()
+    /**
+     * 松手后吸附到最近的左右边缘。
+     *
+     * 这是「不挡内容」最有效的一招：球停在边缘时，正文永远从它旁边流过；
+     * 位置同时写进偏好，下次开机不会回到默认点。
+     */
+    private fun snapToEdge(v: View, params: WindowManager.LayoutParams) {
+        val screenW = resources.displayMetrics.widthPixels
+        val margin = (8 * resources.displayMetrics.density).roundToInt()
+        val target = if (params.x + params.width / 2f < screenW / 2f) margin else screenW - params.width - margin
+        if (target == params.x) {
+            persistBubblePosition(params)
+            return
         }
+        val animator = ValueAnimator.ofInt(params.x, target).apply {
+            duration = 220
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                params.x = it.animatedValue as Int
+                windowManager.updateViewLayout(v, params)
+            }
+        }
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                persistBubblePosition(params)
+            }
+        })
+        animator.start()
+    }
 
-    // ---------- 悬浮球触摸 ----------
-
-    private inner class BubbleTouchListener(private val params: WindowManager.LayoutParams) : View.OnTouchListener {
+    /** OSD 拖拽监听：拖动改位置，轻点循环切换透明度。 */
+    private inner class OsdTouchListener(private val params: WindowManager.LayoutParams) : View.OnTouchListener {
         private var downX = 0
         private var downY = 0
         private var rawX = 0f
@@ -376,53 +641,27 @@ class QptMonitorService : Service() {
                     rawX = event.rawX
                     rawY = event.rawY
                     moved = false
-                    // 必须消费 DOWN，否则后续 MOVE/UP 不会派发给悬浮窗
                     return true
                 }
+
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - rawX).toInt()
                     val dy = (event.rawY - rawY).toInt()
-                    if (kotlin.math.abs(dx) > 6 || kotlin.math.abs(dy) > 6) moved = true
-                    params.x = downX + dx
-                    params.y = downY + dy
+                    if (abs(dx) > 8 || abs(dy) > 8) moved = true
+                    val screenW = resources.displayMetrics.widthPixels
+                    val screenH = resources.displayMetrics.heightPixels
+                    params.x = (downX + dx).coerceIn(0, max(0, screenW - v.width))
+                    params.y = (downY + dy).coerceIn(0, max(0, screenH - v.height))
                     windowManager.updateViewLayout(v, params)
                     return true
                 }
+
                 MotionEvent.ACTION_UP -> {
-                    if (!moved) {
-                        val now = System.currentTimeMillis()
-                        // 忽略气泡刚创建时的异常触摸（窗口添加时的幽灵事件）
-                        if (now - bubbleShownAtMs < 2_000) return true
-                        if (now - lastTap < 300) expandQuickMenu() else toggleRecording()
-                        lastTap = now
+                    if (moved) {
+                        overlayPrefs.edit().putInt(KEY_OSD_X, params.x).putInt(KEY_OSD_Y, params.y).apply()
+                    } else {
+                        cycleOsdAlpha()
                     }
-                    return moved
-                }
-            }
-            return false
-        }
-    }
-
-    /** OSD 悬浮窗拖拽监听：仅拖动改变位置，无点击动作。 */
-    private inner class OsdTouchListener(private val params: WindowManager.LayoutParams) : View.OnTouchListener {
-        private var downX = 0
-        private var downY = 0
-        private var rawX = 0f
-        private var rawY = 0f
-
-        override fun onTouch(v: View, event: MotionEvent): Boolean {
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = params.x
-                    downY = params.y
-                    rawX = event.rawX
-                    rawY = event.rawY
-                    return true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    params.x = downX + (event.rawX - rawX).toInt()
-                    params.y = downY + (event.rawY - rawY).toInt()
-                    windowManager.updateViewLayout(v, params)
                     return true
                 }
             }
@@ -431,7 +670,7 @@ class QptMonitorService : Service() {
     }
 
     private fun notification(text: String) = NotificationCompat.Builder(this, ChannelId)
-        .setSmallIcon(android.R.drawable.ic_menu_manage)
+        .setSmallIcon(R.drawable.ic_launcher_monochrome)
         .setContentTitle("WattScope Next")
         .setContentText(text)
         .setOngoing(true)
@@ -454,6 +693,11 @@ class QptMonitorService : Service() {
 
     companion object {
         private const val ChannelId = "qpt_monitor"
+        private const val KEY_BUBBLE_X = "bubble_x"
+        private const val KEY_BUBBLE_Y = "bubble_y"
+        private const val KEY_OSD_X = "osd_x"
+        private const val KEY_OSD_Y = "osd_y"
+        private const val KEY_OSD_ALPHA = "osd_alpha"
         const val ACTION_SHOW_BUBBLE = "io.github.rusheng920.wattscope.action.SHOW_BUBBLE"
         const val ACTION_HIDE_BUBBLE = "io.github.rusheng920.wattscope.action.HIDE_BUBBLE"
         const val ACTION_TOGGLE_PANEL = "io.github.rusheng920.wattscope.action.TOGGLE_PANEL"
