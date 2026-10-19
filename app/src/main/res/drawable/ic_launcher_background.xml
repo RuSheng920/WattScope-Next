@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标背景：白蓝主色（方案 B），纯白 → 极淡蓝的斜向渐变。
+  不用 100% 纯平白：浅色壁纸上需要一点色阶把图标边界托出来。
+  108x108 画布，铺满即可，Launcher 会按遮罩裁切。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="108"
+                android:endY="108"
+                android:startColor="#FFFFFFFF"
+                android:endColor="#FFE8F1FF"
+                android:startX="0"
+                android:startY="0"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+</vector>

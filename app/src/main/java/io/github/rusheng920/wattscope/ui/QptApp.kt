@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -69,6 +70,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -78,7 +83,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +92,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -97,6 +102,7 @@ import io.github.rusheng920.wattscope.BuildConfig
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
@@ -104,6 +110,7 @@ import io.github.rusheng920.wattscope.domain.ZoneSample
 import io.github.rusheng920.wattscope.domain.ZoneStats
 import io.github.rusheng920.wattscope.ui.components.ActionRow
 import io.github.rusheng920.wattscope.ui.components.BottomItem
+import io.github.rusheng920.wattscope.ui.components.FloatingGlassBottomBar
 import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixBottomBar
 import io.github.rusheng920.wattscope.ui.components.MiuixCard
@@ -162,17 +169,30 @@ fun QptApp(
     val fpsLayers by viewModel.fpsLayers.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val permissions by viewModel.permissions.collectAsState()
+    val glassBottomBar by viewModel.glassBottomBar.collectAsState()
+    val glassIntensity by viewModel.glassIntensity.collectAsState()
+    val onboardingDone by viewModel.onboardingDone.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
     var detailId by remember { mutableStateOf<Long?>(null) }
+    var permissionsOpen by remember { mutableStateOf(false) }
     var tabBackProgress by remember { mutableFloatStateOf(0f) }
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // 权限页 / 首次引导可见时每 1.5s 刷新一次：root、悬浮窗、通知状态变化无需重启应用
+    LaunchedEffect(permissionsOpen, onboardingDone) {
+        if (!permissionsOpen && onboardingDone) return@LaunchedEffect
+        while (true) {
+            viewModel.refreshPermissions()
+            kotlinx.coroutines.delay(1_500)
+        }
+    }
 
     // HyperOS 大标题随列表滚动折叠：同一 ScrollBehavior 同时挂到 TopAppBar 与内容区
     val topBarScroll = MiuixScrollBehavior()
 
     // 预测性返回：非首页时按住返回键，内容随手势缩放，松手完成返回
-    PredictiveBackHandler(enabled = detailId == null && tab != 0) { progress ->
+    PredictiveBackHandler(enabled = detailId == null && !permissionsOpen && tab != 0) { progress ->
         try {
             progress.collect { tabBackProgress = it.progress }
         } finally {
@@ -187,8 +207,8 @@ fun QptApp(
             topBar = {
                 when (tab) {
                     0 -> TopAppBar(
-                        title = "WattScope",
-                        largeTitle = "WattScope",
+                        title = "WattScope Next",
+                        largeTitle = "WattScope Next",
                         scrollBehavior = topBarScroll,
                         actions = {
                             MiuixIconButton(onClick = {
@@ -223,36 +243,22 @@ fun QptApp(
                         },
                     )
 
-                    2 -> TopAppBar(
-                        title = "权限",
-                        largeTitle = "权限",
-                        scrollBehavior = topBarScroll,
-                        actions = {
-                            MiuixIconButton(onClick = viewModel::refreshPermissions) {
-                                Icon(
-                                    Icons.Rounded.Refresh,
-                                    contentDescription = "刷新",
-                                    tint = MiuixTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(21.dp),
-                                )
-                            }
-                        },
-                    )
-
                     else -> TopAppBar(title = "设置", largeTitle = "设置", scrollBehavior = topBarScroll)
                 }
             },
             bottomBar = {
-                MiuixBottomBar(
-                    items = listOf(
-                        BottomItem("仪表盘", Icons.Rounded.Speed),
-                        BottomItem("记录", Icons.Rounded.History),
-                        BottomItem("权限", Icons.Rounded.Shield),
-                        BottomItem("设置", Icons.Rounded.Settings),
-                    ),
-                    selected = tab,
-                    onSelect = { tab = it },
-                )
+                // 关闭悬浮底栏时回落为贴底的 MIUIX 导航栏
+                if (!glassBottomBar) {
+                    MiuixBottomBar(
+                        items = listOf(
+                            BottomItem("仪表盘", Icons.Rounded.Speed),
+                            BottomItem("记录", Icons.Rounded.History),
+                            BottomItem("设置", Icons.Rounded.Settings),
+                        ),
+                        selected = tab,
+                        onSelect = { tab = it },
+                    )
+                }
             },
         ) { padding ->
             Box(
@@ -279,25 +285,17 @@ fun QptApp(
                         devicePowerUw = state.latestDevicePowerUw,
                         latestFps = state.latestFps,
                         permissions = permissions,
+                        bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                         onToggleEnabled = viewModel::setEnabled,
                         onRecordClick = { if (state.isRecording) viewModel.stopRecording() else viewModel.startRecording() },
-                        onOpenPermissions = { tab = 2 },
+                        onOpenPermissions = { permissionsOpen = true },
                     )
 
                     1 -> History(
                         records = records,
                         onOpen = { detailId = it },
                         onDelete = viewModel::deleteRecord,
-                    )
-
-                    2 -> PermissionScreen(
-                        permissions = permissions,
-                        onRequestRoot = viewModel::requestRoot,
-                        onRequestOverlay = onRequestOverlay,
-                        onRequestNotifications = onRequestNotifications,
-                        onRequestBattery = onRequestBatteryWhitelist,
-                        onRequestUsage = onRequestUsageAccess,
-                        onOpenAutostart = onOpenMiuiAutostart,
+                        bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                     )
 
                     else -> SettingsScreen(
@@ -308,10 +306,14 @@ fun QptApp(
                         osdEnabled = osdEnabled,
                         osdMetrics = osdMetrics,
                         permissions = permissions,
+                        glassBottomBar = glassBottomBar,
+                        glassIntensity = glassIntensity,
+                        bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                         onToggleEnabled = viewModel::setEnabled,
                         onInterval = viewModel::setInterval,
                         onThemeMode = viewModel::setThemeMode,
-                        onRequestOverlay = onRequestOverlay,
+                        onGlassBottomBar = viewModel::setGlassBottomBar,
+                        onGlassIntensity = viewModel::setGlassIntensity,
                         onStartService = onStartService,
                         onRequestBatteryWhitelist = onRequestBatteryWhitelist,
                         onOpenMiuiAutostart = onOpenMiuiAutostart,
@@ -322,9 +324,27 @@ fun QptApp(
                         fpsLayers = fpsLayers,
                         onSelectFpsLayer = viewModel::setFpsLayer,
                         onLoadFpsLayers = viewModel::loadFpsLayers,
-                        onOpenPermissions = { tab = 2 },
+                        onOpenPermissions = { permissionsOpen = true },
                     )
                 }
+            }
+        }
+
+        // 悬浮玻璃底栏：覆盖在内容之上，列表滚动时会从玻璃后面穿过
+        if (glassBottomBar) {
+            // 外层 Box 负责贴底对齐：FloatingNavigationBar 的 modifier 落在内部 Row 上
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                FloatingGlassBottomBar(
+                    items = listOf(
+                        BottomItem("仪表盘", Icons.Rounded.Speed),
+                        BottomItem("记录", Icons.Rounded.History),
+                        BottomItem("设置", Icons.Rounded.Settings),
+                    ),
+                    selected = tab,
+                    onSelect = { tab = it },
+                    intensity = glassIntensity,
+                    dark = isDarkTheme,
+                )
             }
         }
 
@@ -334,6 +354,34 @@ fun QptApp(
                 detail = detail,
                 onDismiss = { detailId = null },
                 onExport = { asJson -> onExportRecord(id, asJson) },
+            )
+        }
+
+        if (permissionsOpen) {
+            PermissionPage(
+                permissions = permissions,
+                onDismiss = { permissionsOpen = false },
+                onRefresh = viewModel::refreshPermissions,
+                onRequestRoot = viewModel::requestRoot,
+                onRequestOverlay = onRequestOverlay,
+                onRequestNotifications = onRequestNotifications,
+                onRequestBattery = onRequestBatteryWhitelist,
+                onRequestUsage = onRequestUsageAccess,
+                onOpenAutostart = onOpenMiuiAutostart,
+            )
+        }
+
+        if (!onboardingDone) {
+            OnboardingScreen(
+                permissions = permissions,
+                onRequestRoot = viewModel::requestRoot,
+                onRequestOverlay = onRequestOverlay,
+                onRequestNotifications = onRequestNotifications,
+                onRequestBattery = onRequestBatteryWhitelist,
+                onRequestUsage = onRequestUsageAccess,
+                onOpenAutostart = onOpenMiuiAutostart,
+                onFinish = { viewModel.completeOnboarding(probe = true) },
+                onSkip = { viewModel.completeOnboarding(probe = false) },
             )
         }
     }
@@ -353,6 +401,7 @@ private fun Dashboard(
     devicePowerUw: Long?,
     latestFps: Float?,
     permissions: AppPermissions,
+    bottomPadding: Dp = 24.dp,
     onToggleEnabled: (Boolean) -> Unit,
     onRecordClick: () -> Unit,
     onOpenPermissions: () -> Unit,
@@ -362,7 +411,7 @@ private fun Dashboard(
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (!permissions.requiredReady) {
@@ -431,13 +480,30 @@ private fun Dashboard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("实时功耗", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     Text(
-                        if (samples.isEmpty()) "等待数据" else "${samples.size} 个分区",
+                        if (samples.isEmpty()) {
+                            "等待数据"
+                        } else {
+                            "峰值 ${uwToW(samples.maxOfOrNull { it.effectivePowerUw } ?: 0L)}"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(10.dp))
-                LiveChart(samples, chart.palette)
+                Spacer(Modifier.height(12.dp))
+                if (samples.isEmpty()) {
+                    Box(
+                        Modifier.fillMaxWidth().height(200.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "开启 QPT 后显示各分区功耗柱状图",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    LiveBarChart(samples, chart.palette)
+                }
             }
         }
 
@@ -1225,20 +1291,100 @@ private fun parseCpuRanges(name: String): List<IntRange> {
     return ranges
 }
 
+/**
+ * 实时功耗柱状图：每个分区一根柱子，底部对齐、顶部圆角 + 渐变填充。
+ * 相比折线/散点，柱状更适合「同一时刻各分区谁更耗电」的横向比较。
+ */
 @Composable
-private fun LiveChart(samples: List<ZoneSample>, palette: List<Color>) {
-    val gridColor = LocalChartColors.current.grid
-    Canvas(Modifier.fillMaxWidth().height(190.dp).padding(top = 6.dp)) {
-        drawLine(gridColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.5f)
-        val maxPower = max(1L, samples.maxOfOrNull { it.effectivePowerUw } ?: 1L).toFloat()
+private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
+    val colors = LocalChartColors.current
+    val density = LocalDensity.current
+    val tickTextPx = with(density) { 9.sp.toPx() }
+    val valueTextPx = with(density) { 9.5.sp.toPx() }
+    val zoneTextPx = with(density) { 9.sp.toPx() }
+
+    Canvas(Modifier.fillMaxWidth().height(206.dp)) {
+        val left = 40.dp.toPx()
+        val right = size.width - 2.dp.toPx()
+        val top = 26.dp.toPx()
+        val bottom = size.height - 26.dp.toPx()
+        val chartWidth = (right - left).coerceAtLeast(1f)
+        val chartHeight = (bottom - top).coerceAtLeast(1f)
+
+        val tickPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.label.toArgb()
+            textSize = tickTextPx
+        }
+        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.label.toArgb()
+            textSize = zoneTextPx
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        val valuePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = valueTextPx
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+
+        drawLine(colors.axis, Offset(left, bottom), Offset(right, bottom), strokeWidth = 2f)
+
+        val maxW = max(1L, samples.maxOfOrNull { it.effectivePowerUw } ?: 1L) / 1_000_000f
+        val ticks = niceTicks(maxW * 1.08f, 5)
+        val axisMax = max(0.001f, ticks.last())
+        ticks.forEach { tick ->
+            if (tick > axisMax + 1e-4f) return@forEach
+            val y = bottom - (tick / axisMax) * chartHeight
+            if (tick > 0f) drawLine(colors.grid, Offset(left, y), Offset(right, y), strokeWidth = 1f)
+            val text = when {
+                axisMax >= 10f -> "%.0f".format(Locale.US, tick)
+                axisMax >= 1f -> "%.1f".format(Locale.US, tick)
+                else -> "%.2f".format(Locale.US, tick)
+            }
+            drawContext.canvas.nativeCanvas.drawText(text, 0f, y + tickTextPx * 0.36f, tickPaint)
+        }
+
+        val slot = chartWidth / samples.size
+        val barWidth = min(slot * 0.56f, 30.dp.toPx())
         samples.forEachIndexed { index, sample ->
-            val x = if (samples.size == 1) size.width / 2 else size.width * index / (samples.size - 1)
-            val y = size.height - (sample.effectivePowerUw / maxPower) * (size.height - 8f)
+            val valueW = sample.effectivePowerUw / 1_000_000f
+            val centerX = left + slot * (index + 0.5f)
+            val barHeight = (valueW / axisMax * chartHeight).coerceIn(2.dp.toPx(), chartHeight)
             val color = palette[index % palette.size]
-            drawLine(color.copy(alpha = 0.55f), Offset(x, size.height), Offset(x, y), strokeWidth = 3f, cap = StrokeCap.Round)
-            drawCircle(color, 5.5f, Offset(x, y))
+
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(color, color.copy(alpha = 0.45f)),
+                    startY = bottom - barHeight,
+                    endY = bottom,
+                ),
+                topLeft = Offset(centerX - barWidth / 2f, bottom - barHeight),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+            )
+
+            if (slot >= 26.dp.toPx()) {
+                valuePaint.color = color.toArgb()
+                val valueY = (bottom - barHeight - 6.dp.toPx()).coerceAtLeast(top + valueTextPx)
+                drawContext.canvas.nativeCanvas.drawText(
+                    "%.2f".format(Locale.US, valueW),
+                    centerX,
+                    valueY,
+                    valuePaint,
+                )
+            }
+            val zoneLabel = fitLabel(sample.zoneName.uppercase(), slot - 2.dp.toPx(), labelPaint)
+            drawContext.canvas.nativeCanvas.drawText(zoneLabel, centerX, bottom + 16.dp.toPx(), labelPaint)
         }
     }
+}
+
+/** 按可用宽度截断标签，超出时补省略号。 */
+private fun fitLabel(text: String, maxWidth: Float, paint: android.graphics.Paint): String {
+    if (paint.measureText(text) <= maxWidth) return text
+    var trimmed = text
+    while (trimmed.isNotEmpty() && paint.measureText("$trimmed…") > maxWidth) {
+        trimmed = trimmed.dropLast(1)
+    }
+    return if (trimmed.isEmpty()) "" else "$trimmed…"
 }
 
 // ---------- 历史 ----------
@@ -1248,10 +1394,11 @@ private fun History(
     records: List<RecordEntity>,
     onOpen: (Long) -> Unit,
     onDelete: (Long) -> Unit,
+    bottomPadding: Dp = 24.dp,
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (records.isNotEmpty()) {
@@ -1327,10 +1474,14 @@ private fun SettingsScreen(
     osdEnabled: Boolean,
     osdMetrics: List<OsdMetric>,
     permissions: AppPermissions,
+    glassBottomBar: Boolean,
+    glassIntensity: GlassIntensity,
+    bottomPadding: Dp = 24.dp,
     onToggleEnabled: (Boolean) -> Unit,
     onInterval: (SamplingInterval) -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
-    onRequestOverlay: () -> Unit,
+    onGlassBottomBar: (Boolean) -> Unit,
+    onGlassIntensity: (GlassIntensity) -> Unit,
     onStartService: () -> Unit,
     onRequestBatteryWhitelist: () -> Unit,
     onOpenMiuiAutostart: () -> Unit,
@@ -1345,7 +1496,7 @@ private fun SettingsScreen(
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionTitle("外观") }
@@ -1369,6 +1520,43 @@ private fun SettingsScreen(
                     selectedIndex = ThemeMode.entries.indexOf(themeMode),
                     onSelect = { onThemeMode(ThemeMode.entries[it]) },
                 )
+            }
+        }
+        item {
+            MiuixCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(Icons.Rounded.Layers)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("悬浮玻璃底栏", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "底栏浮在内容之上，液态玻璃样式仅在应用内使用",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    MiuixSwitch(checked = glassBottomBar, onCheckedChange = onGlassBottomBar)
+                }
+                if (glassBottomBar) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(Icons.Rounded.Opacity, MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.width(14.dp))
+                        Text("液态玻璃浓度", style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    SegmentedControl(
+                        options = GlassIntensity.entries.map { it.label },
+                        selectedIndex = GlassIntensity.entries.indexOf(glassIntensity),
+                        onSelect = { onGlassIntensity(GlassIntensity.entries[it]) },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "轻盈更通透，浓郁更强调底栏轮廓；三档都保持内容可读。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
@@ -1425,7 +1613,7 @@ private fun SettingsScreen(
                 )
                 ActionRow(
                     title = "OSD 实时浮层",
-                    subtitle = "液态玻璃样式，可拖动、不写入记录",
+                    subtitle = "纯色半透明浮层，可拖动、不写入记录",
                     icon = Icons.Rounded.Notifications,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     trailing = { MiuixSwitch(checked = osdEnabled, onCheckedChange = onToggleOsd) },
@@ -1545,20 +1733,6 @@ private fun SettingsScreen(
                     onClick = onOpenPermissions,
                 )
                 ActionRow(
-                    title = "悬浮窗权限",
-                    subtitle = if (permissions.overlay) "已授予" else "未授予",
-                    icon = Icons.Rounded.Layers,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    trailing = {
-                        StatusPill(
-                            if (permissions.overlay) "已授予" else "未授予",
-                            if (permissions.overlay) PillTone.OK else PillTone.WARN,
-                        )
-                    },
-                    onClick = onRequestOverlay,
-                    showDivider = true,
-                )
-                ActionRow(
                     title = "重启前台服务",
                     subtitle = "通知被系统清理后可手动恢复",
                     icon = Icons.Rounded.Refresh,
@@ -1599,7 +1773,7 @@ private fun SettingsScreen(
                     IconBadge(Icons.Rounded.Info, MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text("WattScope-Next", style = MaterialTheme.typography.titleSmall)
+                        Text("WattScope Next", style = MaterialTheme.typography.titleSmall)
                         Text(
                             "版本 ${BuildConfig.VERSION_NAME} · 高通 QPT 功耗遥测",
                             style = MaterialTheme.typography.labelSmall,

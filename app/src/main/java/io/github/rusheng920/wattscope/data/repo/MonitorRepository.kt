@@ -30,6 +30,7 @@ import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.domain.ClusterFreqSample
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.CoreUsageSample
+import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.OsdSample
 import io.github.rusheng920.wattscope.domain.RecordingState
@@ -133,15 +134,57 @@ class MonitorRepository(
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeModeFlow: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
+    /** 悬浮玻璃底栏：关闭后回落为贴底的 MIUIX 导航栏。 */
+    private val _glassBottomBar = MutableStateFlow(prefs.getBoolean("glass_bottom_bar", true))
+    val glassBottomBarFlow: StateFlow<Boolean> = _glassBottomBar.asStateFlow()
+
+    /** 液态玻璃浓度（三档）。 */
+    private val _glassIntensity = MutableStateFlow(loadGlassIntensity())
+    val glassIntensityFlow: StateFlow<GlassIntensity> = _glassIntensity.asStateFlow()
+
+    /**
+     * 首次安装引导是否完成。
+     * 未完成时不探测 root、不启动 QPT 采样，避免应用一打开就弹授权框。
+     */
+    private val _onboardingDone = MutableStateFlow(prefs.getBoolean("onboarding_done", false))
+    val onboardingDoneFlow: StateFlow<Boolean> = _onboardingDone.asStateFlow()
+
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString("theme_mode", mode.key).apply()
         _themeMode.value = mode
+    }
+
+    fun setGlassBottomBar(enabled: Boolean) {
+        prefs.edit().putBoolean("glass_bottom_bar", enabled).apply()
+        _glassBottomBar.value = enabled
+    }
+
+    fun setGlassIntensity(intensity: GlassIntensity) {
+        prefs.edit().putString("glass_intensity", intensity.key).apply()
+        _glassIntensity.value = intensity
     }
 
     private fun loadThemeMode(): ThemeMode =
         prefs.getString("theme_mode", null)
             ?.let { key -> ThemeMode.entries.firstOrNull { it.key == key } }
             ?: ThemeMode.SYSTEM
+
+    private fun loadGlassIntensity(): GlassIntensity =
+        prefs.getString("glass_intensity", null)
+            ?.let { key -> GlassIntensity.entries.firstOrNull { it.key == key } }
+            ?: GlassIntensity.STANDARD
+
+    /** 完成首次引导；[probe] = true 时立即探测 root 并启动 QPT 能力扫描。 */
+    suspend fun completeOnboarding(probe: Boolean) {
+        prefs.edit().putBoolean("onboarding_done", true).apply()
+        _onboardingDone.value = true
+        if (probe) {
+            _state.update { it.copy(status = "正在检查 QPT") }
+            refreshDeviceState(force = true)
+        } else {
+            _state.update { it.copy(status = "尚未授予 Root，部分功能不可用") }
+        }
+    }
 
     /** 权限状态快照：Activity 每次 onResume 与从系统设置返回后刷新。 */
     private val _permissions = MutableStateFlow(AppPermissions())
@@ -242,6 +285,11 @@ class MonitorRepository(
      *              避免每次开始记录都在测量窗口里塞进 11 次 su 往返。
      */
     suspend fun refreshDeviceState(force: Boolean = false) = withContext(Dispatchers.IO) {
+        // 首次引导未完成前不探测：hasRoot() 会拉起 su 授权框，必须由用户在权限页主动触发
+        if (!_onboardingDone.value) {
+            _state.update { it.copy(status = "请先完成权限设置") }
+            return@withContext
+        }
         val now = SystemClock.elapsedRealtime()
         if (!force && scanned && now - lastScanElapsedMs < SCAN_TTL_MS) return@withContext
 

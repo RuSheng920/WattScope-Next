@@ -61,7 +61,7 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
             val info = packageManager.getApplicationInfo(packageName, 0)
             packageManager.getApplicationLabel(info).toString()
         }.getOrElse {
-            if (packageName == context.packageName) "WattScope" else packageName
+            if (packageName == context.packageName) "WattScope Next" else packageName
         }
         val hasIcon = runCatching {
             packageManager.getApplicationIcon(packageName)

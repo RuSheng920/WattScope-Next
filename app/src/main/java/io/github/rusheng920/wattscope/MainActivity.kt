@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        requestRuntimePermissions()
+        // 不在启动时自动申请权限：首次安装先进入独立的权限引导页，由用户逐项授权
         startMonitorService()
 
         val repository = (application as QptApplication).repository
@@ -99,6 +99,11 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // 从系统授权页返回时刷新权限状态（root / 悬浮窗 / 电池 / 使用情况）
         (application as QptApplication).repository.refreshPermissions()
+        // 刚授予悬浮窗权限时补显示悬浮球 / OSD，不必重启服务
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, QptMonitorService::class.java).setAction(QptMonitorService.ACTION_SYNC_OVERLAYS),
+        )
     }
 
     override fun onStop() {
@@ -130,12 +135,6 @@ class MainActivity : ComponentActivity() {
                 if (result.isSuccess) "导出成功" else "导出失败：${result.exceptionOrNull()?.message}",
                 Toast.LENGTH_SHORT,
             ).show()
-        }
-    }
-
-    private fun requestRuntimePermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

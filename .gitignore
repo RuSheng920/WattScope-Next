@@ -20,6 +20,9 @@ captures/
 # 工具与本地数据
 .workbuddy/
 
+# 本地构建产物（安装包只通过 GitHub Release 分发）
+releases/
+
 # 调试/测试产物（勿提交）
 /*.xml
 /*.db

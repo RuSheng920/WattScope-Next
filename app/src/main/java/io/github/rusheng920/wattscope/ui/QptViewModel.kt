@@ -13,6 +13,7 @@ import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.data.repo.MonitorRepository
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
@@ -40,6 +41,13 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     val themeMode: StateFlow<ThemeMode> = repository.themeModeFlow
     val permissions: StateFlow<AppPermissions> = repository.permissions
 
+    /** 悬浮玻璃底栏与玻璃浓度。 */
+    val glassBottomBar: StateFlow<Boolean> = repository.glassBottomBarFlow
+    val glassIntensity: StateFlow<GlassIntensity> = repository.glassIntensityFlow
+
+    /** 首次安装引导是否完成。 */
+    val onboardingDone: StateFlow<Boolean> = repository.onboardingDoneFlow
+
     /** 悬浮窗开关状态（Compose 可观察，写入即响应）。 */
     val bubbleEnabled: StateFlow<Boolean> = repository.bubbleEnabledFlow
 
@@ -58,8 +66,17 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
 
     fun refresh() = viewModelScope.launch { repository.refreshDeviceState(force = true) }
     fun setThemeMode(mode: ThemeMode) = repository.setThemeMode(mode)
+    fun setGlassBottomBar(enabled: Boolean) = repository.setGlassBottomBar(enabled)
+    fun setGlassIntensity(intensity: GlassIntensity) = repository.setGlassIntensity(intensity)
     fun refreshPermissions() = repository.refreshPermissions()
-    fun requestRoot() = viewModelScope.launch { repository.requestRootAccess() }
+
+    /** 申请 root：授权成功后立即重扫设备能力，不需要重启应用。 */
+    fun requestRoot() = viewModelScope.launch {
+        if (repository.requestRootAccess()) repository.refreshDeviceState(force = true)
+    }
+
+    /** 完成首次引导；[probe] = false 表示「稍后设置」，此时不弹 root 授权框。 */
+    fun completeOnboarding(probe: Boolean) = viewModelScope.launch { repository.completeOnboarding(probe) }
     fun setEnabled(enabled: Boolean) = viewModelScope.launch { repository.setQptEnabled(enabled) }
     fun setInterval(interval: SamplingInterval) = repository.setInterval(interval)
     fun startRecording() = viewModelScope.launch { repository.startRecording() }

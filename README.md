@@ -1,6 +1,6 @@
 <div align="center">
 
-# WattScope-Next
+# WattScope Next
 
 **高通平台 SoC 功耗遥测工具 · 重构版**
 
@@ -47,17 +47,18 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 
 ### 界面
 
-四个主 Tab：**仪表盘 / 记录 / 权限 / 设置**。
+三个主 Tab：**仪表盘 / 记录 / 设置**，权限中心作为设置内的二级页独立进入。
 
 - 深色、浅色、跟随系统三态主题，偏好持久化
-- 权限中心逐项展示授权状态并可直接跳转系统页面（root、悬浮窗、通知、使用情况访问、电池优化白名单）
+- 悬浮液态玻璃底栏（MIUIX `FloatingNavigationBar` + 静态高光/亮边），浓度三档可调，可回落为贴底样式
+- 权限中心逐项展示授权状态并可直接跳转系统页面（root、悬浮窗、通知、使用情况访问、电池优化白名单），页面可见时每 1.5 s 自动复检
 - 预测性返回：Tab 内滑动返回与详情页手势均有进度联动
 
 ## 与 WattScope 1.0 的差异
 
 | 维度 | WattScope 1.0 | WattScope-Next |
 | --- | --- | --- |
-| UI | 自绘仿 MIUI 组件 | MIUIX 设计语言组件库 + 四 Tab 信息架构 |
+| UI | 自绘仿 MIUI 组件 | MIUIX 设计语言组件库 + 三 Tab + 悬浮玻璃底栏 |
 | 采样 | 每 tick 约 32 次 `fork/exec`（`$(cat)`、`grep`、`awk`） | shell 内建 `read`，单次 `su` 往返批量取数 |
 | 采样频率 | 全指标同频 | 快慢分级：功率高频、温度/占用等慢变量降频 |
 | FPS | `dumpsys gfxinfo` 为主源，SurfaceView 游戏常测不到 | SurfaceFlinger 呈现时间戳为主源，`gfxinfo` 仅回退 |
@@ -65,8 +66,8 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 | 落库 | 每 tick 单独提交，与采样串行 | 批量提交 + WAL `synchronous=NORMAL` |
 | 详情页 | 订阅整张表，录制中打开历史触发 O(n²) 查询 | stride 降采样 + 后台线程聚合 |
 | 时间基准 | `currentTimeMillis` | `elapsedRealtime` + 固定相位，抗校时跳变 |
-| 主题 | 固定深色 | 三态主题 |
-| 权限 | 分散检查 | 权限中心统一状态与跳转 |
+| 主题 | 固定深色 | 三态主题 + 悬浮玻璃底栏（三档浓度） |
+| 权限 | 分散检查 | 首次安装引导 + 设置内权限二级页，状态实时刷新 |
 
 数据库 schema 为 v4，内置 1→4 全量迁移，旧记录可直接沿用。
 
@@ -83,7 +84,7 @@ app/src/main/java/io/github/rusheng920/wattscope/
 │   ├── local/            Room 实体、DAO、迁移
 │   └── repo/             MonitorRepository：采样编排、落库、导出
 ├── domain/               领域模型与枚举（采样档位、主题、OSD 指标）
-├── service/              前台服务、悬浮球、OSD（View 体系 + 液态玻璃背景）
+├── service/              前台服务、悬浮球、OSD（View 体系 + 纯色半透明浮层）
 └── ui/                   Compose + MIUIX 页面与主题
 ```
 
@@ -125,7 +126,7 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 
 ## 使用
 
-1. 设备已 root（KernelSU / Magisk），授予 WattScope root 权限
+1. 设备已 root（KernelSU / Magisk），授予 WattScope Next root 权限
 2. 首次启动按引导完成悬浮窗、通知、使用情况访问与电池优化白名单授权
 3. 仪表盘点击「开始记录」，或使用悬浮球记录当前前台应用；退出该应用自动停止
 4. 记录完成后进入「记录」Tab 查看曲线与统计，支持导出 JSON / CSV
@@ -136,6 +137,22 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 安装包见 [Releases](../../releases)。
 
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
+
+## 更新日志
+
+### v1.1.0
+
+- **首次引导**：新增独立的权限引导页，安装后不再于启动时自动申请通知、悬浮窗权限，改为在引导页逐项授权
+- **信息架构**：底栏收敛为「仪表盘 / 记录 / 设置」三 Tab，权限中心改为设置内的二级页，支持预测性返回
+- **悬浮玻璃底栏**：基于 MIUIX `FloatingNavigationBar` 的液态玻璃底栏，浓度三档可调，可回落为贴底样式
+- **实时功耗图表**：首页由折线改为按分区柱状图，含峰值标注、数值标签与自适应刻度
+- **Root 检测修复**：优先读取已建立 shell 的真实状态，在 root 管理器中重新授权后无需重启应用即可识别
+- **浮层视觉**：悬浮球 / OSD 改为纯色半透明 + 1 dp 亮边，移除渐变玻璃层，降低常驻浮层的 GPU 重绘开销
+- **命名与图标**：应用名统一为 WattScope Next，重绘自适应图标（含 monochrome 层）
+
+### v1.0.0
+
+- 首个公开发布版本
 
 ## 已知限制
 

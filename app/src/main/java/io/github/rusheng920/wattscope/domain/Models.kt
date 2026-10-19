@@ -33,6 +33,16 @@ enum class ThemeMode(val key: String, val label: String) {
     DARK("dark", "深色"),
 }
 
+/**
+ * 液态玻璃浓度：只作用于应用内悬浮底栏。
+ * [tintAlpha] 是玻璃底色不透明度，数值越大越「浓」，透出的内容越少。
+ */
+enum class GlassIntensity(val key: String, val label: String, val tintAlpha: Float) {
+    LIGHT("light", "轻盈", 0.58f),
+    STANDARD("standard", "标准", 0.74f),
+    STRONG("strong", "浓郁", 0.90f),
+}
+
 enum class SamplingInterval(val millis: Long, val label: String) {
     Ms100(100, "100 毫秒"),
     Ms200(200, "200 毫秒"),

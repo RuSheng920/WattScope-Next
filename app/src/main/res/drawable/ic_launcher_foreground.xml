@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：外环 + 闪电。
-  108x108 画布，内容控制在中心 60dp 直径内，避免被圆形/方形遮罩裁切。
+  自适应图标前景（方案 B · 白底蓝标）：外环（示波器轮廓）+ 蓝色闪电（品牌符号）。
+  108x108 画布，内容控制在中心 66dp 安全区内，避免被圆形/方形遮罩裁切。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -9,15 +9,15 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 外环：低透明度，提供"示波器/仪表"的轮廓 -->
+    <!-- 外环：低透明度蓝色，提供"示波器/仪表"的轮廓 -->
     <path
-        android:pathData="M54,24 A30,30 0 1,1 53.99,24"
-        android:strokeColor="#33FFFFFF"
-        android:strokeWidth="2.4"
-        android:fillColor="@android:color/transparent" />
+        android:fillColor="@android:color/transparent"
+        android:pathData="M54,23 A31,31 0 1,1 53.99,23"
+        android:strokeColor="#4D0F5CE8"
+        android:strokeWidth="2.6" />
 
-    <!-- 闪电：品牌色 -->
+    <!-- 闪电：品牌蓝，用偏深的 #0F5CE8 保证 48px 下的对比度 -->
     <path
-        android:pathData="M56,32 L43,58 L52,58 L48,76 L65,52 L55,52 Z"
-        android:fillColor="#3FE0A8" />
+        android:fillColor="#FF0F5CE8"
+        android:pathData="M56,29 L35,58 L49,58 L47,77 L73,48 L56,48 Z" />
 </vector>

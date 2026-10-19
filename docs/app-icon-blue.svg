@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WattScope-Next 应用图标 · 方案 B（白蓝主色 · 白底蓝标） 512x512 矢量稿 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FFFFFF" />
+            <stop offset="1" stop-color="#E8F1FF" />
+        </linearGradient>
+    </defs>
+    <rect width="512" height="512" rx="123" fill="url(#bg)" />
+    <g transform="scale(4.7407)">
+        <path d="M54,23 A31,31 0 1,1 53.99,23" fill="none" stroke="#0F5CE8" stroke-opacity="0.3" stroke-width="2.6" />
+        <path d="M56,29 L35,58 L49,58 L47,77 L73,48 L56,48 Z" fill="#0F5CE8" />
+    </g>
+</svg>

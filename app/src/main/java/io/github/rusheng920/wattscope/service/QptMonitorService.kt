@@ -8,7 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.net.Uri
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -20,7 +20,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
-import io.github.rusheng920.wattscope.MainActivity
 import io.github.rusheng920.wattscope.QptApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class QptMonitorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -73,11 +73,17 @@ class QptMonitorService : Service() {
                 repository.osdEnabled = !repository.osdEnabled
                 if (repository.osdEnabled) showOsd() else hideOsd()
             }
+            ACTION_SYNC_OVERLAYS -> syncOverlays()
         }
-        if (!Settings.canDrawOverlays(this)) {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+        // 不再自动跳转悬浮窗授权页：授权统一由首次引导 / 设置里的权限中心发起
         return START_STICKY
+    }
+
+    /** 从系统授权页返回后调用：把已授权的悬浮球 / OSD 补显示出来，无需重启服务。 */
+    private fun syncOverlays() {
+        if (!Settings.canDrawOverlays(this)) return
+        if (repository.bubbleEnabled) showBubble()
+        if (repository.osdEnabled) showOsd()
     }
 
     override fun onDestroy() {
@@ -113,7 +119,7 @@ class QptMonitorService : Service() {
             orientation = LinearLayout.VERTICAL
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
         }
-        root.background = GlassDrawable(cornerRadiusPx = 16 * density, dark = true, shadowOffsetPx = 6f)
+        root.background = roundedBackground(radiusDp = 16f, alpha = 0xE0)
         osdText = TextView(this).apply {
             textSize = 11.5f
             setTextColor(0xFFEDF4FA.toInt())
@@ -186,7 +192,7 @@ class QptMonitorService : Service() {
             gravity = Gravity.CENTER
             setTextColor(0xFFFFFFFF.toInt())
             setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
-            background = GlassDrawable(cornerRadiusPx = size / 2f, dark = true, shadowOffsetPx = 5f)
+            background = roundedBackground(radiusDp = size / 2f / density, alpha = 0xE6)
             setOnTouchListener(BubbleTouchListener(params))
         }
         windowManager.addView(bubble, params)
@@ -256,7 +262,7 @@ class QptMonitorService : Service() {
             orientation = LinearLayout.VERTICAL
             setPadding((18 * density).toInt(), (16 * density).toInt(), (18 * density).toInt(), (16 * density).toInt())
         }
-        root.background = GlassDrawable(cornerRadiusPx = 24 * density, dark = true, shadowOffsetPx = 8f)
+        root.background = roundedBackground(radiusDp = 24f, alpha = 0xE6)
 
         root.addView(TextView(this).apply {
             text = "QPT 控制"
@@ -296,7 +302,7 @@ class QptMonitorService : Service() {
 
         root.addView(glassButton("关闭面板") { hidePanel() }, lpWithMargin(density, 10))
 
-        // 玻璃观感由 GlassDrawable 的四层渐变实现：常驻浮层不做实时模糊，
+        // 液态玻璃只用于应用内底栏：浮层保持纯色，不做实时模糊，
         // 避免 GPU 持续工作影响功耗测量精度，也避开 OEM 对浮层模糊支持不一致的问题。
         windowManager.addView(root, params)
         panel = root
@@ -309,22 +315,32 @@ class QptMonitorService : Service() {
         setTextColor(0xFFC3D1DE.toInt())
     }
 
-    /** 面板内的玻璃胶囊按钮：与卡片同一套语言，避免混入系统默认 Holo 按钮。 */
+    /** 面板内的胶囊按钮：与卡片同一套语言，避免混入系统默认 Holo 按钮。 */
     private fun glassButton(text: String, onClick: () -> Unit) = TextView(this).apply {
         this.text = text
         textSize = 13.5f
         gravity = Gravity.CENTER
         setTextColor(0xFFF2F7FB.toInt())
-        background = GlassDrawable(
-            cornerRadiusPx = 22 * resources.displayMetrics.density,
-            dark = true,
-            shadowOffsetPx = 0f,
-        )
+        background = roundedBackground(radiusDp = 22f, alpha = 0xB3)
         isClickable = true
         isFocusable = true
         setPadding(0, (11 * resources.displayMetrics.density).toInt(), 0, (11 * resources.displayMetrics.density).toInt())
         setOnClickListener { onClick() }
     }
+
+    /**
+     * 浮层背景：纯色半透明 + 1dp 亮边 + 圆角。
+     *
+     * 液态玻璃只在应用内底栏使用；OSD/悬浮球是常驻浮层，保持纯色更省 GPU，
+     * 也不会让逐帧重绘的渐变影响功耗测量。
+     */
+    private fun roundedBackground(radiusDp: Float, alpha: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusDp * resources.displayMetrics.density
+            setColor(Color.argb(alpha, 14, 21, 24))
+            setStroke((1 * resources.displayMetrics.density).roundToInt(), Color.argb(46, 255, 255, 255))
+        }
 
     private fun hidePanel() {
         panel?.let { windowManager.removeView(it); panel = null }
@@ -416,7 +432,7 @@ class QptMonitorService : Service() {
 
     private fun notification(text: String) = NotificationCompat.Builder(this, ChannelId)
         .setSmallIcon(android.R.drawable.ic_menu_manage)
-        .setContentTitle("WattScope")
+        .setContentTitle("WattScope Next")
         .setContentText(text)
         .setOngoing(true)
         // 点击通知打开悬浮窗控制面板（开/关 QPT、开/关悬浮窗）
@@ -442,5 +458,6 @@ class QptMonitorService : Service() {
         const val ACTION_HIDE_BUBBLE = "io.github.rusheng920.wattscope.action.HIDE_BUBBLE"
         const val ACTION_TOGGLE_PANEL = "io.github.rusheng920.wattscope.action.TOGGLE_PANEL"
         const val ACTION_TOGGLE_OSD = "io.github.rusheng920.wattscope.action.TOGGLE_OSD"
+        const val ACTION_SYNC_OVERLAYS = "io.github.rusheng920.wattscope.action.SYNC_OVERLAYS"
     }
 }
