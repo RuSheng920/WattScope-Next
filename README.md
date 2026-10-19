@@ -17,7 +17,7 @@
 WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重构续作。项目沿用原版的 QPT 遥测模型与记录数据结构，但 **UI 层、采样链路、FPS 数据源与权限流程均已重写**，目标是让"测量工具本身"尽可能不干扰测量结果。
 
 - **低开销优先**：单次 `su` 往返完成一轮采样，shell 内建 `read` 替代 `$(cat)`，避免每 tick 数十次进程 fork
-- **原生设计语言**：界面基于官方 MIUIX 组件库（`top.yukonga.miuix.kmp`）构建，而非自绘仿制
+- **原生设计语言**：界面基于 MIUIX 设计语言的 Compose 组件库（`top.yukonga.miuix.kmp`）构建，而非自绘仿制
 - **数据可信**：时间基准改用 `elapsedRealtime`，规避 NTP 校时造成的假功耗尖峰；FPS 取自 SurfaceFlinger 实际上屏帧
 
 已在 **Redmi K90 Pro Max（myron / SM8850 / Android 16）** 上验证。
@@ -56,7 +56,7 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 
 | 维度 | WattScope 1.0 | WattScope-Next |
 | --- | --- | --- |
-| UI | 自绘仿 MIUI 组件 | 官方 MIUIX 组件库 + 四 Tab 信息架构 |
+| UI | 自绘仿 MIUI 组件 | MIUIX 设计语言组件库 + 四 Tab 信息架构 |
 | 采样 | 每 tick 约 32 次 `fork/exec`（`$(cat)`、`grep`、`awk`） | shell 内建 `read`，单次 `su` 往返批量取数 |
 | 采样频率 | 全指标同频 | 快慢分级：功率高频、温度/占用等慢变量降频 |
 | FPS | `dumpsys gfxinfo` 为主源，SurfaceView 游戏常测不到 | SurfaceFlinger 呈现时间戳为主源，`gfxinfo` 仅回退 |
