@@ -40,8 +40,8 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 
 ### 记录与观测
 
-- **悬浮球**：点按开始记录当前应用，**退出该应用自动停止**；记录标题带应用名与图标
-- **OSD 浮层**：11 项指标可选（SOC / CPU-L / CPU-M / GPU 功耗、GPU 频率与占用、FPS、CPU/GPU/DDR 温度、整机功耗），竖排显示、可拖动、不写入记录；刷新缓慢的传感器保持上次有效值
+- **悬浮球**：单击开始记录当前应用，**退出该应用自动停止**；长按打开控制面板，拖拽松手自动吸附屏幕边缘；迷你 / 标准 / 大三档尺寸，闲置自动淡出
+- **OSD 浮层**：11 项指标可选（SOC / CPU-L / CPU-M / GPU 功耗、GPU 频率与占用、FPS、CPU/GPU/DDR 温度、整机功耗），两列 HUD 排版、可拖动、轻点切换透明度、不写入记录；刷新缓慢的传感器保持上次有效值
 - **历史详情**：平均功耗置顶、全局同步十字光标 + 浮动 Tooltip、每图独立平均值、分区筛选、JSON / CSV 导出
 - **后台保活**：界面不可见时预览降为 1 Hz，曲线不断点，避免息屏后持续高频采样
 
@@ -50,7 +50,7 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 三个主 Tab：**仪表盘 / 记录 / 设置**，权限中心作为设置内的二级页独立进入。
 
 - 深色、浅色、跟随系统三态主题，偏好持久化
-- 悬浮液态玻璃底栏（MIUIX `FloatingNavigationBar` + 静态高光/亮边），浓度三档可调，可回落为贴底样式
+- 悬浮液态玻璃底栏（MIUIX `FloatingNavigationBar` + Backdrop 实时模糊 / 边缘折射 / 内阴影），浓度三档可调，可回落为贴底样式
 - 权限中心逐项展示授权状态并可直接跳转系统页面（root、悬浮窗、通知、使用情况访问、电池优化白名单），页面可见时每 1.5 s 自动复检
 - 预测性返回：Tab 内滑动返回与详情页手势均有进度联动
 
@@ -84,7 +84,7 @@ app/src/main/java/io/github/rusheng920/wattscope/
 │   ├── local/            Room 实体、DAO、迁移
 │   └── repo/             MonitorRepository：采样编排、落库、导出
 ├── domain/               领域模型与枚举（采样档位、主题、OSD 指标）
-├── service/              前台服务、悬浮球、OSD（View 体系 + 纯色半透明浮层）
+├── service/              前台服务、悬浮球、OSD（View 体系；overlay/ 下为自绘玻璃球与 HUD 面板）
 └── ui/                   Compose + MIUIX 页面与主题
 ```
 
@@ -139,6 +139,14 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 更新日志
+
+### v1.2.0
+
+- **液态玻璃重做**：底栏改用 Backdrop 的 `colorControls` + 低模糊 + 边缘折射，表面着色由 26%–56% 压到 5%–18%，并补上内阴影与默认环境高光，透光不再呈磨砂亚克力观感
+- **悬浮球缩小与吸附**：新增迷你 / 标准 / 大三档（36 / 44 / 54 dp，默认 44），拖拽松手自动吸附最近边缘，闲置 7 秒淡出到 55%，位置本地记忆
+- **悬浮球重绘**：深色玻璃球 + 顶部内高光 + 渐变亮边 + 记录态状态环，替换原来的「▶」文字按钮；单击记录、长按控制面板
+- **OSD 重做**：两列 HUD（标签左对齐 / 数值右对齐等宽），标题行带 REC / LIVE 状态点，轻点循环三档透明度
+- **界面细节**：页面底色加入极淡纵向冷暖过渡（为玻璃提供可折射的内容），空状态改为图标 + 标题 + 说明，OSD 指标选择改为可勾选胶囊，分隔线统一为 MIUIX `dividerLine`
 
 ### v1.1.0
 
