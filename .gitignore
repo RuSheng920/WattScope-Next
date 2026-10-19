@@ -8,6 +8,17 @@ build/
 .gradle/
 .kotlin/
 local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 工具与本地数据
+.workbuddy/
 
 # 调试/测试产物（勿提交）
 /*.xml
