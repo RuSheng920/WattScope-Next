@@ -26,11 +26,18 @@ data class ZoneStats(
     val peakAtMs: Long,
 )
 
+/** 外观模式：跟随系统 / 强制浅色 / 强制深色（持久化到 SharedPreferences）。 */
+enum class ThemeMode(val key: String, val label: String) {
+    SYSTEM("system", "跟随系统"),
+    LIGHT("light", "浅色"),
+    DARK("dark", "深色"),
+}
+
 enum class SamplingInterval(val millis: Long, val label: String) {
-    Ms100(100, "100 ms"),
-    Ms200(200, "200 ms"),
-    Ms500(500, "500 ms"),
-    Ms1000(1_000, "1000 ms"),
+    Ms100(100, "100 毫秒"),
+    Ms200(200, "200 毫秒"),
+    Ms500(500, "500 毫秒"),
+    Ms1000(1_000, "1000 毫秒"),
 }
 
 data class RecordingState(

@@ -1,6 +1,7 @@
 package com.qpt.powermonitor.core.qpt
 
 import com.qpt.powermonitor.core.root.RootManager
+import com.qpt.powermonitor.core.root.escapeForShell
 import com.qpt.powermonitor.domain.PowerZone
 import com.qpt.powermonitor.domain.ZoneSample
 import kotlin.math.max
@@ -40,18 +41,36 @@ class QptPowerReader(
         }
     }
 
-    /** 构建批量读取全部 zone power_uw/energy_uj 的命令（可与附加监控命令合并为一次 su 往返）。 */
-    fun buildSampleCommand(zones: List<PowerZone>): String =
-        if (zones.isEmpty()) {
-            ""
-        } else {
-            "for z in ${zones.joinToString(" ") { "'${it.path}'" }}; do " +
-                "e=\$(cat \"\$z/energy_uj\" 2>/dev/null); " +
-                "p=\$(cat \"\$z/power_uw\" 2>/dev/null); " +
-                "echo \"QPT|\$z|\$p|\$e\"; done"
+    /**
+     * 构建批量读取全部 zone power_uw/energy_uj 的命令（可与附加监控命令合并为一次 su 往返）。
+     *
+     * 全程使用 shell 内建 `read` 读取 sysfs：重定向由 shell 自己 open/close，**不产生任何子进程**。
+     * 旧实现每个 zone 两次 `$(cat ...)`，8 个 zone 即 16 个 fork/exec，5 Hz 下约 80 进程/秒，
+     * 这些开销全部记在 root shell 名下，是记录态功耗的主要来源。
+     */
+    fun buildSampleCommand(zones: List<PowerZone>): String {
+        if (zones.isEmpty()) return ""
+        return buildString {
+            zones.forEach { zone ->
+                val path = zone.path.escapeForShell()
+                append("p=; e=; read -r p 2>/dev/null < '").append(path).append("/power_uw'; ")
+                append("read -r e 2>/dev/null < '").append(path).append("/energy_uj'; ")
+                append("printf 'QPT|%s|%s|%s\\n' '").append(path).append("' \"\$p\" \"\$e\"; ")
+            }
         }
+    }
 
-    fun parseSampleLines(lines: List<String>, timestampMs: Long): List<ZoneSample> =
+    /**
+     * 解析采样行。
+     * @param timestampMs 墙钟时间，写入数据库用于展示/导出
+     * @param elapsedMs 单调时钟（elapsedRealtime），**仅用于能量差分**：墙钟会被 NTP 校时跳变，
+     *                  直接拿它算 Δt 会产出几百瓦的假功耗尖峰
+     */
+    fun parseSampleLines(
+        lines: List<String>,
+        timestampMs: Long,
+        elapsedMs: Long = timestampMs,
+    ): List<ZoneSample> =
         lines.mapNotNull { line ->
             val parts = line.split('|')
             if (parts.size < 4 || parts[0] != "QPT") return@mapNotNull null
@@ -60,10 +79,10 @@ class QptPowerReader(
             val energy = parts[3].trim().toLongOrNull() ?: return@mapNotNull null
             val zone = zonesCache[path] ?: return@mapNotNull null
             val previous = lastEnergyByPath[path]
-            lastEnergyByPath[path] = energy to timestampMs
+            lastEnergyByPath[path] = energy to elapsedMs
             val computed = if (power == null && previous != null) {
                 val deltaEnergy = max(0L, energy - previous.first)
-                val deltaMs = max(1L, timestampMs - previous.second)
+                val deltaMs = max(1L, elapsedMs - previous.second)
                 deltaEnergy * 1_000L / deltaMs
             } else {
                 null

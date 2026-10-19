@@ -38,11 +38,15 @@ interface SampleDao {
     @Insert
     suspend fun insertAll(samples: List<SampleEntity>)
 
-    @Query("SELECT * FROM samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeSamples(recordId: Long): Flow<List<SampleEntity>>
+    /** [stride] > 1 时按行号等间隔抽样：详情页图表只需要趋势，不必把几十万行全拉进内存。导出走全量 [getSamples]。 */
+    @Query("SELECT * FROM samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeSamples(recordId: Long, stride: Int = 1): Flow<List<SampleEntity>>
 
-    @Query("SELECT * FROM samples WHERE recordId = :recordId")
+    @Query("SELECT * FROM samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
     suspend fun getSamples(recordId: Long): List<SampleEntity>
+
+    @Query("SELECT COUNT(*) FROM samples WHERE recordId = :recordId")
+    suspend fun countSamples(recordId: Long): Int
 }
 
 @Dao
@@ -68,26 +72,26 @@ interface AuxSampleDao {
     @Insert
     suspend fun insertFps(samples: List<FpsEntity>)
 
-    @Query("SELECT * FROM cluster_freq_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeClusterFreqs(recordId: Long): Flow<List<ClusterFreqEntity>>
+    @Query("SELECT * FROM cluster_freq_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeClusterFreqs(recordId: Long, stride: Int = 1): Flow<List<ClusterFreqEntity>>
 
-    @Query("SELECT * FROM core_usage_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeCoreUsages(recordId: Long): Flow<List<CoreUsageEntity>>
+    @Query("SELECT * FROM core_usage_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeCoreUsages(recordId: Long, stride: Int = 1): Flow<List<CoreUsageEntity>>
 
-    @Query("SELECT * FROM temp_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeTemps(recordId: Long): Flow<List<TempEntity>>
+    @Query("SELECT * FROM temp_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeTemps(recordId: Long, stride: Int = 1): Flow<List<TempEntity>>
 
-    @Query("SELECT * FROM device_power_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeDevicePowers(recordId: Long): Flow<List<DevicePowerEntity>>
+    @Query("SELECT * FROM device_power_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeDevicePowers(recordId: Long, stride: Int = 1): Flow<List<DevicePowerEntity>>
 
-    @Query("SELECT * FROM gpu_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeGpus(recordId: Long): Flow<List<GpuEntity>>
+    @Query("SELECT * FROM gpu_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeGpus(recordId: Long, stride: Int = 1): Flow<List<GpuEntity>>
 
-    @Query("SELECT * FROM ddr_freq_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeDdrFreqs(recordId: Long): Flow<List<DdrFreqEntity>>
+    @Query("SELECT * FROM ddr_freq_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeDdrFreqs(recordId: Long, stride: Int = 1): Flow<List<DdrFreqEntity>>
 
-    @Query("SELECT * FROM fps_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
-    fun observeFps(recordId: Long): Flow<List<FpsEntity>>
+    @Query("SELECT * FROM fps_samples WHERE recordId = :recordId AND (:stride <= 1 OR id % :stride = 0) ORDER BY timestampMs ASC")
+    fun observeFps(recordId: Long, stride: Int = 1): Flow<List<FpsEntity>>
 
     @Query("SELECT * FROM fps_samples WHERE recordId = :recordId")
     suspend fun getFps(recordId: Long): List<FpsEntity>

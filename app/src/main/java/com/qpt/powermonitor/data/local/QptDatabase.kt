@@ -127,6 +127,14 @@ abstract class QptDatabase : RoomDatabase() {
             context,
             QptDatabase::class.java,
             "qpt-power-monitor.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addCallback(object : RoomDatabase.Callback() {
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    // WAL + NORMAL：断电最多丢最后一个事务，换来 fsync 次数大幅下降。
+                    // 采样数据本身就是统计量，丢一秒不影响结论。
+                    db.execSQL("PRAGMA synchronous=NORMAL")
+                }
+            })
+            .build()
     }
 }
