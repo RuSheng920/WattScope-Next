@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景：外环 + 闪电。
+  108x108 画布，内容控制在中心 60dp 直径内，避免被圆形/方形遮罩裁切。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 外环：低透明度，提供"示波器/仪表"的轮廓 -->
+    <path
+        android:pathData="M54,24 A30,30 0 1,1 53.99,24"
+        android:strokeColor="#33FFFFFF"
+        android:strokeWidth="2.4"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- 闪电：品牌色 -->
+    <path
+        android:pathData="M56,32 L43,58 L52,58 L48,76 L65,52 L55,52 Z"
+        android:fillColor="#3FE0A8" />
+</vector>
