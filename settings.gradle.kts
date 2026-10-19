@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "QPT Power Monitor"
+rootProject.name = "WattScope-Next"
 include(":app")

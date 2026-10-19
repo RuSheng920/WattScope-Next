@@ -130,9 +130,9 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 
 ## 下载
 
-安装包见 [Releases](../../releases) 与 `releases/` 目录。
+安装包见 [`releases/`](releases) 目录。
 
-> 仓库内 `releases/WattScope-v1.0.0-release.apk` 为界面重构前的构建产物；最新源码的界面以本文档描述为准。
+> 仓库内 `releases/WattScope-v1.0.0-release.apk` 为界面重构前的构建产物。重构版尚未重新打包，如需最新界面请参照「构建」一节自行编译。
 
 ## 已知限制
 
