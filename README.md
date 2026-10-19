@@ -19,6 +19,7 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 - **低开销优先**：单次 `su` 往返完成一轮采样，shell 内建 `read` 替代 `$(cat)`，避免每 tick 数十次进程 fork
 - **原生设计语言**：界面基于 MIUIX 设计语言的 Compose 组件库（`top.yukonga.miuix.kmp`）构建，而非自绘仿制
 - **数据可信**：时间基准改用 `elapsedRealtime`，规避 NTP 校时造成的假功耗尖峰；FPS 取自 SurfaceFlinger 实际上屏帧
+- **独立包名**：`io.github.rusheng920.wattscope`，可与原版 WattScope 共存安装，互不覆盖数据
 
 已在 **Redmi K90 Pro Max（myron / SM8850 / Android 16）** 上验证。
 
@@ -111,8 +112,9 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 | AGP / Kotlin / KSP | 8.13.2 / 2.3.21 / 2.3.12 |
 
 ```bash
-./gradlew assembleDebug
-# 产物：app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleDebug      # 调试包
+./gradlew assembleRelease    # 发布包（需 keystore.properties，缺失时为未签名）
+# 产物：app/build/outputs/apk/{debug,release}/
 ```
 
 补充说明：
@@ -127,19 +129,20 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 2. 首次启动按引导完成悬浮窗、通知、使用情况访问与电池优化白名单授权
 3. 仪表盘点击「开始记录」，或使用悬浮球记录当前前台应用；退出该应用自动停止
 4. 记录完成后进入「记录」Tab 查看曲线与统计，支持导出 JSON / CSV
+5. 「设置 → 关于」可查看版本号，并直接跳转本项目的 GitHub 主页
 
 ## 下载
 
-安装包见 [`releases/`](releases) 目录。
+安装包见 [Releases](../../releases)。
 
-> 仓库内 `releases/WattScope-v1.0.0-release.apk` 为界面重构前的构建产物。重构版尚未重新打包，如需最新界面请参照「构建」一节自行编译。
+> 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 已知限制
 
 - QPT 节点由厂商 BSP 提供，非高通平台或未开放 powercap 的设备只能记录频率、温度、FPS 等附加项
 - 部分机型的电池温度、GPU busy 节点命名不同，缺失时对应图表自动隐藏
 - 悬浮球与 OSD 常驻浮层不做实时高斯模糊（逐帧模糊会持续占用 GPU，污染功耗测量），改用静态液态玻璃底衬
-- 应用 ID 沿用 `com.qpt.powermonitor`；能否覆盖安装取决于与原版签名是否一致
+- 从原版 WattScope 切换过来属于全新安装：包名不同，历史记录不会迁移
 
 ## 文档
 
