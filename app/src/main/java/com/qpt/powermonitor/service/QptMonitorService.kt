@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -17,7 +16,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -26,6 +24,7 @@ import com.qpt.powermonitor.MainActivity
 import com.qpt.powermonitor.QptApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -44,6 +43,7 @@ class QptMonitorService : Service() {
     private var lastTap = 0L
     private var bubbleShownAtMs = 0L
     private var menuMode = false
+    private var osdSampleJob: Job? = null
 
     private val repository by lazy { (application as QptApplication).repository }
 
@@ -96,8 +96,8 @@ class QptMonitorService : Service() {
         if (osdRoot != null) return
         val density = resources.displayMetrics.density
         val screenW = resources.displayMetrics.widthPixels
-        // 宽度再减小：1/4 屏宽 → 1/5 屏宽
-        val width = (screenW / 5)
+        // 宽度约 1/4 屏：中文标签 + 数值需要比纯英文更宽，过窄会换行破坏对齐
+        val width = (screenW / 4.3f).toInt()
         val params = WindowManager.LayoutParams(
             width,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -111,20 +111,19 @@ class QptMonitorService : Service() {
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((6 * density).toInt(), (4 * density).toInt(), (6 * density).toInt(), (4 * density).toInt())
+            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
         }
-        root.background = GradientDrawable().apply {
-            // 背景更透明：alpha 0xCC(80%) → 0x99(60%)，40% 透明
-            setColor(0x990E1116.toInt())
-            cornerRadius = 6 * density
-        }
+        root.background = GlassDrawable(cornerRadiusPx = 16 * density, dark = true, shadowOffsetPx = 6f)
         osdText = TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFFE6EDF3.toInt())
-            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 11.5f
+            setTextColor(0xFFEDF4FA.toInt())
+            setShadowLayer(5f, 0f, 1f, 0xB3000000.toInt())
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.MONOSPACE,
+                android.graphics.Typeface.BOLD,
+            )
             includeFontPadding = false
-            // 行间距进一步缩小：1dp → 0.5dp
-            setLineSpacing(0.5f * density, 1f)
+            setLineSpacing(3f * density, 1f)
         }
         root.addView(osdText)
         // 可拖动：移除 FLAG_NOT_TOUCHABLE 并挂接触摸监听
@@ -135,12 +134,16 @@ class QptMonitorService : Service() {
     }
 
     private fun hideOsd() {
+        // 必须取消订阅：否则每次「关→开」都会多留一个永不退出的 collector
+        osdSampleJob?.cancel()
+        osdSampleJob = null
         osdRoot?.let { windowManager.removeView(it); osdRoot = null }
         osdText = null
     }
 
     private fun observeOsdSample() {
-        scope.launch {
+        osdSampleJob?.cancel()
+        osdSampleJob = scope.launch {
             kotlinx.coroutines.flow.combine(repository.osdSample, repository.osdMetricsFlow) { sample, metrics ->
                 sample to metrics
             }.collect { (sample, metrics) ->
@@ -164,7 +167,8 @@ class QptMonitorService : Service() {
     private fun showBubble() {
         if (bubble != null) return
         bubbleShownAtMs = System.currentTimeMillis()
-        val size = (32 * resources.displayMetrics.density).toInt()
+        val density = resources.displayMetrics.density
+        val size = (52 * density).toInt()
         val params = WindowManager.LayoutParams(
             size,
             size,
@@ -178,10 +182,11 @@ class QptMonitorService : Service() {
         }
         bubble = TextView(this).apply {
             text = "▶"
-            textSize = 12f
+            textSize = 13f
             gravity = Gravity.CENTER
-            setTextColor(0xFF07110D.toInt())
-            background = BubbleDrawable()
+            setTextColor(0xFFFFFFFF.toInt())
+            setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
+            background = GlassDrawable(cornerRadiusPx = size / 2f, dark = true, shadowOffsetPx = 5f)
             setOnTouchListener(BubbleTouchListener(params))
         }
         windowManager.addView(bubble, params)
@@ -238,7 +243,7 @@ class QptMonitorService : Service() {
         if (panel != null) return
         val density = resources.displayMetrics.density
         val params = WindowManager.LayoutParams(
-            (280 * density).toInt(),
+            (300 * density).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
@@ -249,75 +254,76 @@ class QptMonitorService : Service() {
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((14 * density).toInt(), (12 * density).toInt(), (14 * density).toInt(), (12 * density).toInt())
+            setPadding((18 * density).toInt(), (16 * density).toInt(), (18 * density).toInt(), (16 * density).toInt())
         }
-        root.background = GradientDrawable().apply {
-            setColor(0xE6141A22.toInt())
-            cornerRadius = 12 * density
-            setStroke(1, 0xFF2B3442.toInt())
-        }
+        root.background = GlassDrawable(cornerRadiusPx = 24 * density, dark = true, shadowOffsetPx = 8f)
 
         root.addView(TextView(this).apply {
             text = "QPT 控制"
-            textSize = 15f
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(0xFFFFFFFF.toInt())
+            setShadowLayer(4f, 0f, 1f, 0x80000000.toInt())
         })
 
-        qptStatusText = TextView(this).apply {
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(0xFFC7D3DE.toInt())
-        }
-        root.addView(qptStatusText, lpWithMargin(density, 10))
-        root.addView(Button(this).apply {
-            text = "切换 QPT"
-            textSize = 13f
-            setOnClickListener {
-                scope.launch {
-                    repository.setQptEnabled(!repository.state.value.qptEnabled)
-                    qptStatusText?.text = if (repository.state.value.qptEnabled) "QPT：已开启" else "QPT：已关闭"
-                }
+        qptStatusText = panelStatusText()
+        root.addView(qptStatusText, lpWithMargin(density, 12))
+        root.addView(glassButton("切换 QPT 开关") {
+            scope.launch {
+                repository.setQptEnabled(!repository.state.value.qptEnabled)
+                qptStatusText?.text = if (repository.state.value.qptEnabled) "QPT：已开启" else "QPT：已关闭"
             }
-        }, lpWithMargin(density, 2))
+        }, lpWithMargin(density, 4))
 
-        bubbleStatusText = TextView(this).apply {
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(0xFFC7D3DE.toInt())
-        }
-        root.addView(bubbleStatusText, lpWithMargin(density, 10))
-        root.addView(Button(this).apply {
-            text = "切换悬浮窗"
-            textSize = 13f
-            setOnClickListener {
-                val enabled = !repository.bubbleEnabled
-                repository.bubbleEnabled = enabled
-                bubbleStatusText?.text = if (enabled) "悬浮窗：已开启" else "悬浮窗：已关闭"
-                startService(Intent(this@QptMonitorService, QptMonitorService::class.java)
-                    .setAction(if (enabled) ACTION_SHOW_BUBBLE else ACTION_HIDE_BUBBLE))
-            }
-        }, lpWithMargin(density, 2))
-        root.addView(Button(this).apply {
-            text = "切换 OSD 悬浮窗"
-            textSize = 13f
-            setOnClickListener {
-                repository.osdEnabled = !repository.osdEnabled
-                if (repository.osdEnabled) showOsd() else hideOsd()
-                toast(if (repository.osdEnabled) "OSD 悬浮窗已开启" else "OSD 悬浮窗已关闭")
-            }
-        }, lpWithMargin(density, 10))
-        root.addView(Button(this).apply {
-            text = "关闭"
-            textSize = 13f
-            setOnClickListener {
-                hidePanel()
-            }
-        }, lpWithMargin(density, 10))
+        bubbleStatusText = panelStatusText()
+        root.addView(bubbleStatusText, lpWithMargin(density, 12))
+        root.addView(glassButton("切换悬浮球") {
+            val enabled = !repository.bubbleEnabled
+            repository.bubbleEnabled = enabled
+            bubbleStatusText?.text = if (enabled) "悬浮球：已开启" else "悬浮球：已关闭"
+            startService(
+                Intent(this@QptMonitorService, QptMonitorService::class.java)
+                    .setAction(if (enabled) ACTION_SHOW_BUBBLE else ACTION_HIDE_BUBBLE),
+            )
+        }, lpWithMargin(density, 4))
 
+        root.addView(glassButton("切换 OSD 悬浮窗") {
+            repository.osdEnabled = !repository.osdEnabled
+            if (repository.osdEnabled) showOsd() else hideOsd()
+            toast(if (repository.osdEnabled) "OSD 悬浮窗已开启" else "OSD 悬浮窗已关闭")
+        }, lpWithMargin(density, 12))
+
+        root.addView(glassButton("关闭面板") { hidePanel() }, lpWithMargin(density, 10))
+
+        // 玻璃观感由 GlassDrawable 的四层渐变实现：常驻浮层不做实时模糊，
+        // 避免 GPU 持续工作影响功耗测量精度，也避开 OEM 对浮层模糊支持不一致的问题。
         windowManager.addView(root, params)
         panel = root
         refreshPanelState()
+    }
+
+    private fun panelStatusText() = TextView(this).apply {
+        textSize = 12.5f
+        gravity = Gravity.CENTER
+        setTextColor(0xFFC3D1DE.toInt())
+    }
+
+    /** 面板内的玻璃胶囊按钮：与卡片同一套语言，避免混入系统默认 Holo 按钮。 */
+    private fun glassButton(text: String, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 13.5f
+        gravity = Gravity.CENTER
+        setTextColor(0xFFF2F7FB.toInt())
+        background = GlassDrawable(
+            cornerRadiusPx = 22 * resources.displayMetrics.density,
+            dark = true,
+            shadowOffsetPx = 0f,
+        )
+        isClickable = true
+        isFocusable = true
+        setPadding(0, (11 * resources.displayMetrics.density).toInt(), 0, (11 * resources.displayMetrics.density).toInt())
+        setOnClickListener { onClick() }
     }
 
     private fun hidePanel() {
@@ -426,7 +432,7 @@ class QptMonitorService : Service() {
 
     private fun createChannel() {
         getSystemService<NotificationManager>()?.createNotificationChannel(
-            NotificationChannel(ChannelId, "QPT Monitor", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(ChannelId, "QPT 功耗监控", NotificationManager.IMPORTANCE_LOW),
         )
     }
 

@@ -12,12 +12,22 @@ import com.qpt.powermonitor.data.local.RecordEntity
 import com.qpt.powermonitor.data.local.SampleEntity
 import com.qpt.powermonitor.data.local.TempEntity
 import com.qpt.powermonitor.data.repo.MonitorRepository
+import com.qpt.powermonitor.domain.AppPermissions
 import com.qpt.powermonitor.domain.OsdMetric
 import com.qpt.powermonitor.domain.SamplingInterval
+import com.qpt.powermonitor.domain.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,6 +36,10 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     val state = repository.state
     val records: StateFlow<List<RecordEntity>> = repository.records.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** 外观模式与权限状态。 */
+    val themeMode: StateFlow<ThemeMode> = repository.themeModeFlow
+    val permissions: StateFlow<AppPermissions> = repository.permissions
+
     /** 悬浮窗开关状态（Compose 可观察，写入即响应）。 */
     val bubbleEnabled: StateFlow<Boolean> = repository.bubbleEnabledFlow
 
@@ -33,11 +47,19 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     val osdEnabled: StateFlow<Boolean> = repository.osdEnabledFlow
     val osdMetrics: StateFlow<List<OsdMetric>> = repository.osdMetricsFlow
 
+    /** FPS 数据源：null = 自动跟随前台应用；非空 = 用户手工指定的 SurfaceFlinger 图层。 */
+    val fpsLayer: StateFlow<String?> = repository.fpsLayerFlow
+    private val _fpsLayers = MutableStateFlow<List<String>>(emptyList())
+    val fpsLayers: StateFlow<List<String>> = _fpsLayers.asStateFlow()
+
     init {
         viewModelScope.launch { repository.refreshDeviceState() }
     }
 
-    fun refresh() = viewModelScope.launch { repository.refreshDeviceState() }
+    fun refresh() = viewModelScope.launch { repository.refreshDeviceState(force = true) }
+    fun setThemeMode(mode: ThemeMode) = repository.setThemeMode(mode)
+    fun refreshPermissions() = repository.refreshPermissions()
+    fun requestRoot() = viewModelScope.launch { repository.requestRootAccess() }
     fun setEnabled(enabled: Boolean) = viewModelScope.launch { repository.setQptEnabled(enabled) }
     fun setInterval(interval: SamplingInterval) = repository.setInterval(interval)
     fun startRecording() = viewModelScope.launch { repository.startRecording() }
@@ -46,6 +68,8 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
     fun setOsdEnabled(enabled: Boolean) { repository.osdEnabled = enabled }
     fun setOsdMetrics(metrics: List<OsdMetric>) = repository.setOsdMetrics(metrics)
+    fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
+    fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }
 
     /** 生成完整导出内容（JSON / CSV），供 SAF 保存到用户选择的位置。 */
     suspend fun exportRecord(recordId: Long, asJson: Boolean): String =
@@ -53,23 +77,39 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun samples(recordId: Long): StateFlow<List<SampleEntity>> =
         repository.observeSamples(recordId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun stats(recordId: Long): StateFlow<DetailUiState> {
+    /**
+     * 详情页数据流：先算降采样步长（把超长记录压到约 3000 行），再订阅 8 张表的 Flow。
+     * 聚合放在 Default 线程，避免录制中打开详情页时主线程被 groupBy/average 打满。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun stats(recordId: Long): StateFlow<DetailUiState> =
+        flow { emit(repository.detailStride(recordId)) }
+            .flatMapLatest { stride -> detailFlow(recordId, stride) }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailUiState())
+
+    private fun detailFlow(recordId: Long, stride: Int): Flow<DetailUiState> {
         val auxA = combine(
-            repository.observeClusterFreqs(recordId),
-            repository.observeCoreUsages(recordId),
-            repository.observeTemps(recordId),
-            repository.observeDevicePowers(recordId),
+            repository.observeClusterFreqs(recordId, stride),
+            repository.observeCoreUsages(recordId, stride),
+            repository.observeTemps(recordId, stride),
+            repository.observeDevicePowers(recordId, stride),
         ) { freqs, cores, temps, powers ->
             AuxDataA(freqs, cores, temps, powers)
         }
         val auxB = combine(
-            repository.observeGpus(recordId),
-            repository.observeDdrFreqs(recordId),
-            repository.observeFps(recordId),
+            repository.observeGpus(recordId, stride),
+            repository.observeDdrFreqs(recordId, stride),
+            repository.observeFps(recordId, stride),
         ) { gpus, ddrFreqs, fpsList ->
             AuxDataB(gpus, ddrFreqs, fpsList)
         }
-        return combine(repository.observeRecord(recordId), repository.observeSamples(recordId), auxA, auxB) { record, samples, a, b ->
+        return combine(
+            repository.observeRecord(recordId),
+            repository.observeSamples(recordId, stride),
+            auxA,
+            auxB,
+        ) { record, samples, a, b ->
             DetailUiState(
                 record = record,
                 samples = samples,
@@ -100,7 +140,6 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
             // 录制进行时其他记录的写入会触发 Room 表级失效、Flow 重发射；
             // 数据未变化时不向下游发射，避免详情页无谓重组与图表手势抖动
             .distinctUntilChanged()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailUiState())
     }
 
     private data class AuxDataA(
