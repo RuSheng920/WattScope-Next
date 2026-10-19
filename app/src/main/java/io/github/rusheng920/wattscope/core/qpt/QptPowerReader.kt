@@ -4,6 +4,7 @@ import io.github.rusheng920.wattscope.core.root.RootManager
 import io.github.rusheng920.wattscope.core.root.escapeForShell
 import io.github.rusheng920.wattscope.domain.PowerZone
 import io.github.rusheng920.wattscope.domain.ZoneSample
+import io.github.rusheng920.wattscope.domain.sortedForDisplay
 import kotlin.math.max
 
 class QptPowerReader(
@@ -38,7 +39,7 @@ class QptPowerReader(
             val name = parts[1].trim()
             if (name.isBlank()) return@mapNotNull null
             PowerZone(path = parts[0], name = name, hasPowerNode = parts[2].trim() == "1")
-        }
+        }.sortedForDisplay()
     }
 
     /**
@@ -47,18 +48,18 @@ class QptPowerReader(
      * 全程使用 shell 内建 `read` 读取 sysfs：重定向由 shell 自己 open/close，**不产生任何子进程**。
      * 旧实现每个 zone 两次 `$(cat ...)`，8 个 zone 即 16 个 fork/exec，5 Hz 下约 80 进程/秒，
      * 这些开销全部记在 root shell 名下，是记录态功耗的主要来源。
+     *
+     * 注意：片段之间用 `"; "` 连接，**每段末尾不能再带分号**。
+     * 之前实现每段都以 `"; "` 收尾，与 aux 命令拼接后产生 `; ;`，
+     * shell 会直接报 `syntax error near unexpected token ';'`，
+     * 导致所有慢变量（温度 / GPU / DDR / 整机功耗）的命令整段失效。
      */
-    fun buildSampleCommand(zones: List<PowerZone>): String {
-        if (zones.isEmpty()) return ""
-        return buildString {
-            zones.forEach { zone ->
-                val path = zone.path.escapeForShell()
-                append("p=; e=; read -r p 2>/dev/null < '").append(path).append("/power_uw'; ")
-                append("read -r e 2>/dev/null < '").append(path).append("/energy_uj'; ")
-                append("printf 'QPT|%s|%s|%s\\n' '").append(path).append("' \"\$p\" \"\$e\"; ")
-            }
-        }
-    }
+    fun buildSampleCommand(zones: List<PowerZone>): String = zones.map { zone ->
+        val path = zone.path.escapeForShell()
+        "p=; e=; read -r p 2>/dev/null < '$path/power_uw'; " +
+            "read -r e 2>/dev/null < '$path/energy_uj'; " +
+            "printf 'QPT|%s|%s|%s\\n' '$path' \"\$p\" \"\$e\""
+    }.joinToString("; ")
 
     /**
      * 解析采样行。

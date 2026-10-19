@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.rusheng920.wattscope"
         minSdk = 33
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 7
+        versionName = "1.2.1"
     }
 
     signingConfigs {

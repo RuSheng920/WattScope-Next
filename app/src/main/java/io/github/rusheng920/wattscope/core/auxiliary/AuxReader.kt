@@ -111,13 +111,20 @@ class AuxReader(private val rootManager: RootManager) {
      * 整机功耗可用性：power_now 或 current_now+voltage_now **有非空内容**才算可用。
      * 注意不能用 `[ -f ]` / `[ -s ]` 判断：sysfs 属性的 st_size 恒为 4096，空文件也会通过，
      * 但读出来是空串（K90 Pro Max 的 power_now 就是这种状态）。
+     *
+     * 判定顺序与 [batteryCommand] 一致：先找有 `current_now` + `voltage_now` 的电池目录，
+     * 都没有时才看 `power_now` 且必须非 0（0 代表「该节点未更新」，不是真实功耗）。
      */
     suspend fun isBatteryPowerAvailable(): Boolean = rootManager.execute(
-        "v=; read -r v 2>/dev/null < /sys/class/power_supply/battery/power_now; " +
-            "if [ -n \"\$v\" ]; then echo 1; else " +
-            "c=; w=; read -r c 2>/dev/null < /sys/class/power_supply/battery/current_now; " +
-            "read -r w 2>/dev/null < /sys/class/power_supply/battery/voltage_now; " +
-            "if [ -n \"\$c\" ] && [ -n \"\$w\" ]; then echo 1; else echo 0; fi; fi",
+        "b=; c=; w=; " +
+            "for n in battery Battery bms hisi_bk_battery; do " +
+            "d=/sys/class/power_supply/\$n; " +
+            "read -r c 2>/dev/null < \$d/current_now; " +
+            "read -r w 2>/dev/null < \$d/voltage_now; " +
+            "if [ -n \"\$c\" ] && [ -n \"\$w\" ]; then b=1; break; fi; c=; w=; done; " +
+            "if [ -n \"\$b\" ]; then echo 1; else " +
+            "p=; read -r p 2>/dev/null < /sys/class/power_supply/battery/power_now; " +
+            "if [ -n \"\$p\" ] && [ \"\$p\" != \"0\" ]; then echo 1; else echo 0; fi; fi",
     ).firstOrNull()?.trim() == "1"
 
     /**
@@ -168,15 +175,48 @@ class AuxReader(private val rootManager: RootManager) {
         "v=; read -r v 2>/dev/null < $pathExpr; printf '$tag%s\\n' \"\$v\""
 
     /**
-     * 整机功耗：优先 power_now；为空则输出原始 current/voltage，由 Kotlin 用 Long 计算
-     * （mksh 算术是 32 位，µA×µV 会溢出，旧实现靠 awk 兜底，现在一并去掉这个进程）。
+     * 整机功耗：按 `current_now × voltage_now` 计算，`power_now` 只作最后兜底。
+     *
+     * 参考 OpenMonitor（1orz/OpenMonitor）的 daemon 实现：它完全不用 `power_now`，
+     * 而是依次探测 `/sys/class/power_supply/{battery,Battery,hisi_bk_battery}` 下的
+     * `current_now` 与 `voltage_now`。原因是 `power_now` 在不少 BMS 驱动上只在充电时更新，
+     * 放电时读到的是字面上的 `0`——旧实现把它当有效值，界面就恒定 0.00 W。
+     *
+     * 这里在它的候选目录基础上补了高通平台的 `bms`（fuel gauge 常单独挂在这里）。
+     * 全程 shell 内建 read，不产生子进程。
      */
     private fun batteryCommand(): String =
-        "v=; read -r v 2>/dev/null < /sys/class/power_supply/battery/power_now; " +
-            "if [ -n \"\$v\" ]; then printf 'BAT|%s\\n' \"\$v\"; else " +
-            "c=; w=; read -r c 2>/dev/null < /sys/class/power_supply/battery/current_now; " +
-            "read -r w 2>/dev/null < /sys/class/power_supply/battery/voltage_now; " +
-            "printf 'BATC|%s|%s\\n' \"\$c\" \"\$w\"; fi"
+        "b=; c=; w=; " +
+            "for n in battery Battery bms hisi_bk_battery; do " +
+            "d=/sys/class/power_supply/\$n; " +
+            "read -r c 2>/dev/null < \$d/current_now; " +
+            "read -r w 2>/dev/null < \$d/voltage_now; " +
+            "if [ -n \"\$c\" ] && [ -n \"\$w\" ]; then b=1; break; fi; c=; w=; done; " +
+            "if [ -n \"\$b\" ]; then printf 'BATC|%s|%s\\n' \"\$c\" \"\$w\"; else " +
+            "p=; read -r p 2>/dev/null < /sys/class/power_supply/battery/power_now; " +
+            "printf 'BAT|%s\\n' \"\$p\"; fi"
+
+    /**
+     * µA × µV → µW。
+     *
+     * 内核 power_supply ABI 规定 `current_now` 是 µA、`voltage_now` 是 µV，
+     * 但个别厂商导出的是 mA / mV。这里按量级挑一个物理上合理的组合：
+     * 手机整机功耗不会低于 0.05 W（屏幕+基带就不止），也不会超过 30 W，
+     * 落进区间即采用；四种组合都不在区间时退回 ABI 标准换算。
+     */
+    private fun devicePowerUw(current: Long?, voltage: Long?): Long? {
+        if (current == null || voltage == null || current == 0L || voltage <= 0L) return null
+        val c = abs(current).toDouble()
+        val v = voltage.toDouble()
+        val candidates = listOf(
+            c * v / 1e6,                       // µA × µV（ABI 标准）
+            c * 1_000.0 * v / 1e6,             // mA × µV
+            c * v * 1_000.0 / 1e6,             // µA × mV
+            c * 1_000.0 * v * 1_000.0 / 1e6,   // mA × mV
+        )
+        val chosen = candidates.firstOrNull { it in 50_000.0..30_000_000.0 } ?: candidates.first()
+        return chosen.toLong().takeIf { it > 0 }
+    }
 
     /**
      * /proc/stat 每核 jiffies。旧实现是 `grep | sed` 两个进程 + 管道，
@@ -224,16 +264,17 @@ class AuxReader(private val rootManager: RootManager) {
                     }
                 }
                 line.startsWith("BAT|") -> {
-                    devicePower = line.substringAfter('|').trim().toLongOrNull()?.takeIf { it >= 0 }
+                    // 0 与负值都视为无效读数（充电时 power_now 可能为负，取绝对值表示负载强度）
+                    devicePower = line.substringAfter('|').trim().toLongOrNull()
+                        ?.let { abs(it) }
+                        ?.takeIf { it > 0 }
                 }
                 // current_now × voltage_now：µA × µV = pW，÷1e6 = µW；充电时电流为负，取绝对值表示负载强度
                 line.startsWith("BATC|") -> {
                     val parts = line.substringAfter('|').trim().split('|')
                     val current = parts.getOrNull(0)?.trim()?.toLongOrNull()
                     val voltage = parts.getOrNull(1)?.trim()?.toLongOrNull()
-                    if (current != null && voltage != null && voltage > 0) {
-                        devicePower = abs(current) * voltage / 1_000_000L
-                    }
+                    devicePowerUw(current, voltage)?.let { devicePower = it }
                 }
                 line.startsWith("GPUF|") -> {
                     gpuFreqHz = line.substringAfter('|').trim().toLongOrNull()

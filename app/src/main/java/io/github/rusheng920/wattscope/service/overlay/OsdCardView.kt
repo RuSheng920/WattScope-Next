@@ -96,17 +96,23 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         body.addView(emptyText)
     }
 
-    /** 指标集合变化时重建行；数据刷新时只改数值（见 [bind]），避免每帧 measure 整棵子树。 */
+    /**
+     * 指标集合变化时重建行；数据刷新时只改数值（见 [bind]），避免每帧 measure 整棵子树。
+     *
+     * 显示顺序一律按 [OsdMetric] 的声明顺序（SOC → CPU-L 大核 → CPU-M 小核 → GPU → …），
+     * 而不是用户点选的先后顺序 —— 否则同一组指标会因为勾选次序不同而每次排列不同。
+     */
     fun setMetrics(metrics: List<OsdMetric>) {
-        if (metrics == currentMetrics) return
-        currentMetrics = metrics
+        val ordered = metrics.sortedBy { OsdMetric.entries.indexOf(it) }
+        if (ordered == currentMetrics) return
+        currentMetrics = ordered
         valueViews.clear()
         body.removeAllViews()
-        if (metrics.isEmpty()) {
+        if (ordered.isEmpty()) {
             body.addView(emptyText)
             return
         }
-        metrics.forEachIndexed { index, metric ->
+        ordered.forEachIndexed { index, metric ->
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL

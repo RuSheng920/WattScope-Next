@@ -75,8 +75,7 @@ class MonitorRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var samplerJob: Job? = null
-    private var previewJob: Job? = null
-    private var osdJob: Job? = null
+    private var liveJob: Job? = null
     private var activeRecord: RecordEntity? = null
 
     /** 采样缓冲：攒够约 1 秒再一次性提交。仅由采样协程（含其 finally）读写，无需加锁。 */
@@ -272,7 +271,12 @@ class MonitorRepository(
         set(value) {
             prefs.edit().putBoolean("osd_enabled", value).apply()
             _osdEnabled.value = value
-            if (value) startOsd() else stopOsd()
+            if (!value) {
+                // 关闭 OSD：清掉快照，避免下次打开时先闪一帧旧数据
+                _osdSample.value = null
+                lastOsdSample = null
+            }
+            syncLive()
         }
 
     /** 设置 OSD 显示项及顺序（持久化）。 */
@@ -357,10 +361,8 @@ class MonitorRepository(
                 },
             )
         }
-        // 应用启动/刷新后，若 QPT 已开启且未在记录，自动开始预览
-        if (enabled && samplerJob?.isActive != true) {
-            startPreview()
-        }
+        // 应用启动 / 刷新后按需拉起实时循环（QPT 开、OSD 开或界面可见）
+        syncLive()
     }
 
     /** 枚举 SurfaceFlinger 图层，供设置页手工指定 FPS 数据源。 */
@@ -373,9 +375,9 @@ class MonitorRepository(
         }
         if (enabled) {
             refreshDeviceState(force = true)
-            startPreview()
+            syncLive()
         } else {
-            stopPreview()
+            stopLive()
             stopRecording()
             refreshDeviceState(force = true)
         }
@@ -388,90 +390,91 @@ class MonitorRepository(
     }
 
     /**
-     * 实时预览：只读 QPT 功耗（不落库、不采 aux/FPS），刷新首页 latestSamples。
-     * 退出前台后**不停止**，改为 [BACKGROUND_INTERVAL_MS] 低频采样，保持曲线在后台继续滚动。
+     * 实时采样循环：首页预览、OSD 浮层共用同一条链路。
+     *
+     * 旧实现拆成两条循环 —— 「轻量 preview」只读 QPT，「OSD」才读 QPT + aux + FPS。
+     * 结果是：不开 OSD 时首页的整机功耗与 FPS 永远是 `--`（preview 根本不采）；
+     * 而 OSD 若在设备扫描完成前被打开，`startOsd()` 会因 `canRecord == false` 直接返回且**不再重试**，
+     * 之后两条循环都不跑，只有在开始记录后（record 循环自己填 StateFlow）才有数据。
+     *
+     * 现在合并为一条：QPT 按采样间隔读，aux（温度 / GPU / DDR / 整机功耗）与 FPS 按 1s 读，
+     * 一次 su 往返同时刷新 latestSamples / latestDevicePowerUw / latestFps / osdSample。
+     * 记录期间由 record 循环接管，本循环停止，避免双重采样。
      */
-    private fun startPreview() {
-        if (previewJob?.isActive == true) return
-        val current = _state.value
-        // OSD 开启时由其循环统一接管（同时刷新首页），避免两个循环各做一次 su 往返重复采样
-        if (_osdEnabled.value && current.canRecord) return
-        if (!current.qptEnabled || current.zones.isEmpty()) return
-        val cachedCommand = qptReader.buildSampleCommand(current.zones)
-        if (cachedCommand.isBlank()) return
-        previewJob = scope.launch {
-            var lastUi = 0L
-            var nextAt = SystemClock.elapsedRealtime()
-            while (isActive && _state.value.qptEnabled) {
-                val elapsed = SystemClock.elapsedRealtime()
-                val wall = System.currentTimeMillis()
-                val samples = qptReader.parseSampleLines(rootManager.execute(cachedCommand), wall, elapsed)
-                if (samples.isNotEmpty() && elapsed - lastUi >= UI_THROTTLE_MS) {
-                    lastUi = elapsed
-                    _state.update { it.copy(latestSamples = samples) }
-                }
-                val period = if (uiVisible) _state.value.interval.millis else BACKGROUND_INTERVAL_MS
-                nextAt += period
-                val sleep = nextAt - SystemClock.elapsedRealtime()
-                if (sleep > 0) delay(sleep) else nextAt = SystemClock.elapsedRealtime()
-            }
-        }
-    }
-
-    private fun stopPreview() {
-        previewJob?.cancel()
-        previewJob = null
-    }
-
-    /** Activity 可见性回调：只切换预览节奏（前台跟随采样间隔，后台 1 Hz），记录与 OSD 不受影响。 */
-    fun setUiVisible(visible: Boolean) {
-        if (uiVisible == visible) return
-        uiVisible = visible
-        if (samplerJob?.isActive == true || _osdEnabled.value) return
-        stopPreview()
-        startPreview()
-    }
-
-    /**
-     * OSD 实时采集：读取全部监控项（QPT + aux + FPS）但不落库，同时刷新首页与 OSD 悬浮窗。
-     * 记录期间由 record 循环接管（零额外读取）；非记录期间本循环独立运行并暂停 preview 避免重复采样。
-     */
-    private fun startOsd() {
-        if (osdJob?.isActive == true) return
+    private fun startLive() {
+        if (liveJob?.isActive == true) return
+        // 记录中由 record 循环负责，本循环不参与
+        if (samplerJob?.isActive == true) return
         val current = _state.value
         if (!current.canRecord) return
-        // OSD 接管实时采样，暂停轻量 preview，避免双重 su 往返
-        stopPreview()
-        val cachedCommand = buildString {
-            append(qptReader.buildSampleCommand(current.zones))
-            val aux = auxReader.buildAuxCommand(current.clusters, current.tempSensors, current.gpuSensor, current.ddrFreqPath)
-            if (isNotEmpty() && aux.isNotEmpty()) append("; ")
-            append(aux)
-        }
-        if (cachedCommand.isBlank()) return
-        osdJob = scope.launch {
+        // 没人看就不采：UI 不可见、OSD 关闭、QPT 关闭时没有任何展示需求
+        if (!uiVisible && !_osdEnabled.value && !current.qptEnabled) return
+
+        val qptCommand = if (current.qptEnabled) qptReader.buildSampleCommand(current.zones) else ""
+        val auxCommand = auxReader.buildAuxCommand(current.clusters, current.tempSensors, current.gpuSensor, current.ddrFreqPath)
+        val fullCommand = joinShellCommands(qptCommand, auxCommand)
+        if (fullCommand.isBlank()) return
+
+        // 慢变量（温度 / 频率 / 整机功率 / 每核占用）按 ~1s 采样，QPT 功率保持用户设定的间隔
+        val slowEvery = max(1L, ceil(1_000.0 / current.interval.millis).toLong())
+
+        liveJob = scope.launch {
+            var tick = 0L
             var lastFpsMs = 0L
             var lastUi = 0L
             var fps: Float? = null
+            var devicePowerUw: Long? = null
             var nextAt = SystemClock.elapsedRealtime()
-            while (isActive) {
+            while (isActive && samplerJob?.isActive != true) {
                 val elapsed = SystemClock.elapsedRealtime()
                 val wall = System.currentTimeMillis()
-                val lines = rootManager.execute(cachedCommand)
-                val zones = qptReader.parseSampleLines(lines, wall, elapsed)
-                val aux = auxReader.parseAuxLines(lines, wall)
-                // FPS 每 ~1s 采样一次（SurfaceFlinger 呈现帧计数，成本远低于 dumpsys gfxinfo）
-                if (elapsed - lastFpsMs >= 1_000) {
-                    lastFpsMs = elapsed
-                    fps = fpsReader.sample()?.fps
+                val slow = tick % slowEvery == 0L
+                // 没有 QPT 时只有慢变量，避免按 interval 反复执行同一条 aux 命令
+                val command = when {
+                    qptCommand.isBlank() -> if (slow) fullCommand else ""
+                    slow -> fullCommand
+                    else -> qptCommand
                 }
-                // 节流：500ms 同时更新 OSD 与首页（一次读取，双用途）
+                // 单次 su 失败（授权对话框、瞬时 IO 错误）不能让整条实时循环退出，否则首页会静默停更
+                val lines = runCatching {
+                    if (command.isBlank()) emptyList() else rootManager.execute(command)
+                }.getOrElse { emptyList() }
+                val zones = if (current.qptEnabled && lines.isNotEmpty()) {
+                    qptReader.parseSampleLines(lines, wall, elapsed)
+                } else {
+                    emptyList()
+                }
+                val aux = if (slow && lines.isNotEmpty()) auxReader.parseAuxLines(lines, wall) else null
+                aux?.devicePowerUw?.let { devicePowerUw = it }
+
+                // FPS 走 SurfaceFlinger 呈现帧计数，1s 一次足够，成本远低于每 tick dumpsys
+                if (elapsed - lastFpsMs >= FPS_INTERVAL_MS) {
+                    lastFpsMs = elapsed
+                    fpsReader.sample()?.fps?.let { fps = it }
+                }
+
+                // 一次 StateFlow 更新同时喂首页与 OSD，减少 CAS / 对象分配 / Compose 重组
                 if (elapsed - lastUi >= UI_THROTTLE_MS) {
                     lastUi = elapsed
-                    _osdSample.value = buildOsdSample(zones, aux, fps)
-                    if (zones.isNotEmpty()) _state.update { it.copy(latestSamples = zones) }
+                    _state.update { s ->
+                        s.copy(
+                            latestSamples = if (zones.isNotEmpty()) zones else s.latestSamples,
+                            latestDevicePowerUw = devicePowerUw ?: s.latestDevicePowerUw,
+                            latestFps = fps ?: s.latestFps,
+                        )
+                    }
+                    if (_osdEnabled.value) {
+                        _osdSample.value = buildOsdSample(zones, aux ?: AuxReader.AuxBatch(), fps)
+                    }
                 }
-                val period = if (uiVisible) _state.value.interval.millis else BACKGROUND_INTERVAL_MS
+
+                tick++
+                // 没有 QPT（只读 1s 慢变量）时不必按高频率唤醒
+                val period = if (current.qptEnabled && (uiVisible || _osdEnabled.value)) {
+                    _state.value.interval.millis
+                } else {
+                    BACKGROUND_INTERVAL_MS
+                }
                 nextAt += period
                 val sleep = nextAt - SystemClock.elapsedRealtime()
                 if (sleep > 0) delay(sleep) else nextAt = SystemClock.elapsedRealtime()
@@ -479,13 +482,39 @@ class MonitorRepository(
         }
     }
 
-    private fun stopOsd() {
-        osdJob?.cancel()
-        osdJob = null
-        _osdSample.value = null
-        lastOsdSample = null
-        // OSD 关闭后，若 QPT 仍开启，恢复预览刷新首页
-        if (_state.value.qptEnabled) startPreview()
+    private fun stopLive() {
+        liveJob?.cancel()
+        liveJob = null
+    }
+
+    /**
+     * 拼接多条 shell 片段。
+     *
+     * 每段先去掉末尾的分号再连接：任何一段以 `"; "` 收尾，直接拼出来就是 `; ;`，
+     * shell 会把它当语法错误整条丢弃 —— 慢变量（温度 / GPU / DDR / 整机功耗）曾因此从未被采样到。
+     */
+    private fun joinShellCommands(vararg parts: String): String =
+        parts.map { it.trim().trimEnd(';').trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("; ")
+
+    /** 按当前需求启停实时循环：QPT 开 / OSD 开 / 界面可见 三者之一才需要采样。 */
+    private fun syncLive() {
+        val s = _state.value
+        val needed = s.canRecord && (s.qptEnabled || _osdEnabled.value || uiVisible)
+        if (!needed) {
+            stopLive()
+        } else if (samplerJob?.isActive != true) {
+            startLive()
+        }
+    }
+
+    /** Activity 可见性回调：只影响采样节奏与启停，记录与 OSD 不受影响。 */
+    fun setUiVisible(visible: Boolean) {
+        if (uiVisible == visible) return
+        uiVisible = visible
+        if (samplerJob?.isActive == true) return
+        syncLive()
     }
 
     private fun buildOsdSample(zones: List<ZoneSample>, aux: AuxReader.AuxBatch, fps: Float?): OsdSample {
@@ -550,19 +579,17 @@ class MonitorRepository(
         fpsReader.reset()
         val qptNote = if (current.qptEnabled) "" else "（无 QPT）"
         _state.update { it.copy(isRecording = true, status = "记录中$qptNote：${app.appName}") }
-        // 记录期间由 record 循环接管首页刷新，暂停预览
-        stopPreview()
+        // 记录期间由 record 循环接管首页刷新，暂停实时循环
+        stopLive()
 
         // 采样循环内不变的量缓存到局部变量，避免每 tick 读取 StateFlow / 重建命令字符串
         val intervalMs = current.interval.millis
         val qptEnabled = current.qptEnabled
         val fastCommand = qptReader.buildSampleCommand(current.zones)
-        val slowCommand = buildString {
-            append(fastCommand)
-            val aux = auxReader.buildAuxCommand(current.clusters, current.tempSensors, current.gpuSensor, current.ddrFreqPath)
-            if (isNotEmpty() && aux.isNotEmpty()) append("; ")
-            append(aux)
-        }
+        val slowCommand = joinShellCommands(
+            fastCommand,
+            auxReader.buildAuxCommand(current.clusters, current.tempSensors, current.gpuSensor, current.ddrFreqPath),
+        )
         // 慢变量（温度/频率/每核占用/整机功率）按 ~1s 节奏采样；QPT 功率保持原始间隔
         val slowEvery = max(1L, ceil(1_000.0 / intervalMs).toLong())
 
@@ -644,8 +671,8 @@ class MonitorRepository(
                     if (naturalExit) {
                         samplerJob = null
                         finalizeActiveRecord()
-                        if (_state.value.qptEnabled) startPreview()
-                        if (_osdEnabled.value) startOsd()
+                        // 记录结束：交回实时循环（QPT / OSD / 界面可见任一需要即恢复）
+                        syncLive()
                     }
                 }
             }
@@ -713,9 +740,8 @@ class MonitorRepository(
         samplerJob?.cancelAndJoin()
         samplerJob = null
         finalizeActiveRecord()
-        // 停止记录后：若 QPT 仍开启，恢复实时预览；OSD 恢复独立采集
-        if (_state.value.qptEnabled) startPreview()
-        if (_osdEnabled.value) startOsd()
+        // 停止记录后交回实时循环（内部按 QPT / OSD / 可见性决定是否真的采样）
+        syncLive()
     }
 
     private suspend fun finalizeActiveRecord() {
@@ -923,6 +949,9 @@ class MonitorRepository(
 
         /** 退到后台后的预览周期：保持曲线滚动，同时把开销压到 1 Hz。 */
         const val BACKGROUND_INTERVAL_MS = 1_000L
+
+        /** FPS 采样周期：SurfaceFlinger 呈现帧计数，1 秒一次足够，且成本远低于每 tick 读。 */
+        const val FPS_INTERVAL_MS = 1_000L
 
         /** 详情页目标行数，超过则按 stride 抽样。 */
         const val DETAIL_TARGET_ROWS = 3_000

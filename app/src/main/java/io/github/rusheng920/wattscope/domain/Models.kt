@@ -6,6 +6,26 @@ data class PowerZone(
     val hasPowerNode: Boolean,
 )
 
+/**
+ * QPT 分区的展示顺序：SOC → CPU-L → CPU-M → GPU → NSP → 其它。
+ *
+ * 注意 CPU-L 是**大核簇**、CPU-M 是**中/小核簇**（SM8750 / 8 Elite 一代起沿用该命名），
+ * 而内核枚举 energy_uj 的顺序是路径字典序，经常把 CPU-M 排在前面。
+ * 图表、分区列表、OSD 都按这个顺序渲染，横向比较才符合「大核 → 小核」的直觉。
+ */
+fun zoneDisplayRank(name: String): Int = when (name.trim().lowercase()) {
+    "soc" -> 0
+    "cpu-l" -> 1
+    "cpu-m" -> 2
+    "gpu" -> 3
+    "nsp" -> 4
+    else -> 10
+}
+
+/** 按 [zoneDisplayRank] 排序；同档位保持原有相对顺序（稳定排序）。 */
+fun List<PowerZone>.sortedForDisplay(): List<PowerZone> =
+    sortedWith(compareBy({ zoneDisplayRank(it.name) }, { it.name }))
+
 data class ZoneSample(
     val zonePath: String,
     val zoneName: String,

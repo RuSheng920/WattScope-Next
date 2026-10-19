@@ -111,6 +111,7 @@ import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
 import io.github.rusheng920.wattscope.domain.ZoneStats
+import io.github.rusheng920.wattscope.domain.zoneDisplayRank
 import io.github.rusheng920.wattscope.ui.components.ActionRow
 import io.github.rusheng920.wattscope.ui.components.BottomItem
 import io.github.rusheng920.wattscope.ui.components.EmptyState
@@ -1423,15 +1424,27 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
             val barHeight = (valueW / axisMax * plotHeight).coerceIn(2.dp.toPx(), plotHeight)
             val color = palette[index % palette.size]
 
-            drawRoundRect(
+            val barLeft = centerX - barWidth / 2f
+            val barTop = bottom - barHeight
+            // 只圆顶部两角：柱子从基线（x 轴）长出来，底部必须是直角，
+            // 四角全圆会让柱子看起来「浮」在轴上，与柱状图的语义冲突。
+            val corner = min(barWidth / 2f, barHeight)
+            val bar = Path().apply {
+                moveTo(barLeft, bottom)
+                lineTo(barLeft, barTop + corner)
+                quadraticTo(barLeft, barTop, barLeft + corner, barTop)
+                lineTo(barLeft + barWidth - corner, barTop)
+                quadraticTo(barLeft + barWidth, barTop, barLeft + barWidth, barTop + corner)
+                lineTo(barLeft + barWidth, bottom)
+                close()
+            }
+            drawPath(
+                path = bar,
                 brush = Brush.verticalGradient(
                     colors = listOf(color, color.copy(alpha = 0.45f)),
-                    startY = bottom - barHeight,
+                    startY = barTop,
                     endY = bottom,
                 ),
-                topLeft = Offset(centerX - barWidth / 2f, bottom - barHeight),
-                size = Size(barWidth, barHeight),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
             )
 
             // 读数画在柱顶上方；相邻标签会重叠时跳过，保证每个数字都完整可读
@@ -2090,7 +2103,8 @@ private fun AvgPowerSection(detail: DetailUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("平均功耗")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            detail.stats.forEach { stat ->
+            // 与图表口径一致：SOC 之外按 CPU-L → CPU-M → GPU 的顺序铺开
+            detail.stats.sortedBy { zoneDisplayRank(it.zoneName) }.forEach { stat ->
                 if (!stat.zoneName.equals("SOC", true)) {
                     SummaryTile(stat.zoneName.uppercase(), uwToW(stat.avgPowerUw))
                 }
@@ -2140,9 +2154,9 @@ private fun ZoneCharts(
     onTsChange: ((Long?) -> Unit)? = null,
 ) {
     val palette = LocalChartColors.current.palette
-    val order = listOf("soc", "cpu-m", "cpu-l", "gpu", "nsp", "debug-0", "debug-2", "debug-4")
     val grouped = samples.groupBy { it.zoneName }
-    val ordered = grouped.entries.sortedBy { (name, _) -> order.indexOf(name).takeIf { it >= 0 } ?: Int.MAX_VALUE }
+    // 统一按 SOC → CPU-L（大核）→ CPU-M（小核）→ GPU → NSP 排序，与首页、OSD 一致
+    val ordered = grouped.entries.sortedWith(compareBy({ zoneDisplayRank(it.key) }, { it.key }))
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ordered.forEachIndexed { index, entry ->
             ZonePowerChart(
