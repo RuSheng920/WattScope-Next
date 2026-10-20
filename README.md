@@ -9,7 +9,8 @@
 <p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.2-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.3-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-watt.rusheng.top-F23A2A" alt="官网" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
   <img src="https://img.shields.io/badge/Kotlin%202.3-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.3" />

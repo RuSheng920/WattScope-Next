@@ -1,0 +1,74 @@
+name: deploy-docs
+
+# 官网/文档站部署：推送 main 且站点文件有变更时，构建 VitePress 并发布到 GitHub Pages。
+# 站点源目录就是 docs/（与项目文档同源），自定义域名由 docs/public/CNAME 决定。
+# 首次使用前需在仓库 Settings → Pages 把 Source 切到 "GitHub Actions"。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 导航栏的版本号跟随 build.gradle.kts，发版后无需手改文档站。
+      - name: Sync app version
+        run: |
+          set -uo pipefail
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1 || true)
+          if [ -n "${VERSION:-}" ]; then
+            printf '{\n  "version": "v%s"\n}\n' "$VERSION" > docs/.vitepress/release.json
+            echo "release.json -> v$VERSION"
+          else
+            echo "::warning::未能从 build.gradle.kts 读到版本号，沿用现有 release.json"
+          fi
+
+      - name: Build with VitePress
+        run: npm run docs:build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

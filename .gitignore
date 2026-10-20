@@ -27,3 +27,8 @@ releases/
 /*.xml
 /*.db
 /hs_err*.log
+
+# 文档站（VitePress）
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
