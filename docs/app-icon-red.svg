@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WattScope-Next 应用图标 v2 · 燃焰 W（红白配色 · 纯白底）512x512 矢量稿 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs>
+        <linearGradient id="red" x1="0" y1="84" x2="0" y2="447" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#F23A2A" />
+            <stop offset="1" stop-color="#AC1019" />
+        </linearGradient>
+    </defs>
+    <rect width="512" height="512" rx="115" fill="#FFFFFF" />
+    <path d="M191.9,181.9 L195.7,268.2 L305.7,85.8 L319.1,266.5 L366.1,182.5 L387.3,148.0 L443.7,93.9 L446.4,101.6 L448.4,109.3 L449.6,116.9 L450.1,124.5 L449.8,132.0 L448.8,139.4 L447.1,146.9 L444.6,154.2 L441.3,161.6 L437.3,168.8 L432.6,176.1 L427.1,183.3 L420.9,190.4 L413.9,197.5 L275.3,445.5 L261.1,254.2 L146.7,443.8 L136.1,198.1 Z" fill="url(#red)" />
+</svg>
