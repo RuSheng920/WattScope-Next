@@ -28,17 +28,23 @@ jobs:
           sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip#' gradle/wrapper/gradle-wrapper.properties
           grep distributionUrl gradle/wrapper/gradle-wrapper.properties
 
-      # runner 自带 Android SDK；预装失败不致命 —— AGP 8 默认会自动下载缺失的
-      # platform / build-tools，这里只是提前装好以节省时间
-      - name: Prepare Android SDK
+      # runner 镜像有时不带 Android SDK；这里自建一份 cmdline-tools 兜底，
+      # 已具备可用 sdkmanager 时直接复用，避免无谓下载
+      - name: Install Android SDK
         run: |
-          if command -v sdkmanager > /dev/null 2>&1; then
-            yes | sdkmanager --licenses > /dev/null 2>&1 || true
-            sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" \
-              || echo "::warning::sdkmanager 预安装失败，改由 AGP 自动下载"
+          set -euo pipefail
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "复用镜像自带 SDK: $ANDROID_HOME"
           else
-            echo "::warning::runner 未提供 sdkmanager，依赖 AGP 自动下载 SDK 组件"
+            mkdir -p "$HOME/android-sdk/cmdline-tools"
+            curl -sSLo /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdtools.zip -d "$HOME/android-sdk/cmdline-tools"
+            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+            echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+            echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           fi
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
 
       - name: Set up Gradle cache
@@ -74,7 +80,20 @@ jobs:
           fi
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon --console=plain
+        run: |
+          set +e
+          ./gradlew assembleRelease --no-daemon --console=plain > build.log 2>&1
+          code=$?
+          tail -60 build.log
+          exit $code
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-log
+          path: build.log
+          if-no-files-found: warn
 
       - name: Resolve APK and version
         id: apk
