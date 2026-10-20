@@ -1,8 +1,15 @@
 name: deploy-docs
 
 # 官网/文档站部署：推送 main 且站点文件有变更时，构建 VitePress 并发布到 GitHub Pages。
-# 站点源目录就是 docs/（与项目文档同源），自定义域名由 docs/public/CNAME 决定。
-# 首次使用前需在仓库 Settings → Pages 把 Source 切到 "GitHub Actions"。
+# 站点源目录就是 docs/（与项目文档同源）。
+#
+# 唯一的一次性手动设置：仓库 Settings → Pages → Source 选 "GitHub Actions"。
+# （configure-pages 的 enablement 选项需要 PAT，GITHUB_TOKEN 无权代为开启。）
+#
+# 自定义域名：在 Settings → Pages → Custom domain 填 watt.rusheng.top，再去 DNS 加
+#   CNAME  watt  →  rusheng920.github.io
+# 不要把域名提前写进产物（docs/public/CNAME）：DNS 未生效时 GitHub 会把 github.io
+# 一并重定向到该域名，两边都打不开。
 on:
   push:
     branches: [main]
