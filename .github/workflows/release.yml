@@ -89,6 +89,10 @@ jobs:
             echo "SIGNING=none" >> "$GITHUB_ENV"
           fi
 
+      # Windows 上建的仓库可能没给 gradlew 可执行位（git mode 100644）
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Build release APK
         run: |
           set +e

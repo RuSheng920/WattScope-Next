@@ -65,6 +65,10 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # Windows 上建的仓库可能没给 gradlew 可执行位（git mode 100644）
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Compile debug
         run: |
           set +e
