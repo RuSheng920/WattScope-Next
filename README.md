@@ -1,14 +1,23 @@
-<div align="center">
+<p align="center">
+  <img src="docs/app-icon.png" width="120" alt="WattScope Next" />
+</p>
 
-# WattScope Next
+<h1 align="center">WattScope Next</h1>
 
-**高通平台 SoC 功耗遥测工具 · 重构版**
+<p align="center"><b>高通平台 SoC 功耗遥测工具 · 重构版</b></p>
 
-基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。
+<p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
-`Android 13+` `Kotlin 2.3` `Jetpack Compose` `MIUIX` `Room` `libsu`
-
-</div>
+<p align="center">
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.1-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
+  <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
+  <img src="https://img.shields.io/badge/Kotlin%202.3-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.3" />
+  <img src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
+  <img src="https://img.shields.io/badge/MIUIX-FF6900?logo=xiaomi&logoColor=white" alt="MIUIX" />
+  <img src="https://img.shields.io/badge/Room-003B57?logo=sqlite&logoColor=white" alt="Room" />
+  <img src="https://img.shields.io/badge/libsu-4EAA25?logo=gnubash&logoColor=white" alt="libsu" />
+</p>
 
 ---
 
