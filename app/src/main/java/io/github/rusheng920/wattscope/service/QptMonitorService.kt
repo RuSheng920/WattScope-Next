@@ -596,12 +596,18 @@ class QptMonitorService : Service() {
     }
 
     /**
-     * 松手后吸附到最近的左右边缘。
+     * 松手后吸附到最近的左右边缘（仅在设置项「松手吸附边缘」开启时生效）。
      *
-     * 这是「不挡内容」最有效的一招：球停在边缘时，正文永远从它旁边流过；
-     * 位置同时写进偏好，下次开机不会回到默认点。
+     * 这是「不挡内容」的一种做法：球停在边缘时，正文永远从它旁边流过。
+     * 但它会强制把球拉到屏幕左右边缘，中间区域完全放不下 —— 默认关闭，
+     * 让用户可以把球停在任意想要的位置；位置同样写进偏好，下次开机不会跑掉。
      */
     private fun snapToEdge(v: View, params: WindowManager.LayoutParams) {
+        if (!repository.bubbleSnapToEdge) {
+            // 未开启吸附：保留用户松手时的位置，仅持久化
+            persistBubblePosition(params)
+            return
+        }
         val screenW = resources.displayMetrics.widthPixels
         val margin = (8 * resources.displayMetrics.density).roundToInt()
         val target = if (params.x + params.width / 2f < screenW / 2f) margin else screenW - params.width - margin

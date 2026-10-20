@@ -30,19 +30,27 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightScheme
 
 private val MiuixLight = miuixLightScheme()
 /**
- * MIUIX 暗色官方值的两处提亮（其余保持官方不变）：
+ * MIUIX 暗色官方值的三处提亮（其余保持官方不变）：
  *
- * 1. `onSurfaceVariantSummary` 官方为 0x80FFFFFF（50% 白），在 #242424 卡片上对比度仅 ~3.6:1，
- *    不达 WCAG AA 4.5:1；提升到 70% 白（~7.5:1），设置页与权限页的摘要文字更清晰。
- * 2. `dividerLine` 官方 #393939 在 #242424 卡片上对比度 ~1.2:1，分隔线几乎不可见；
+ * 1. `onSurfaceVariantSummary` 官方为 0x80FFFFFF（50% 白）。按 WCAG 正确算法
+ *    （alpha 先与背景合成：50% 白叠在 #242424 上得 #929292），对比度约 4.99:1，
+ *    已达 AA 4.5:1；提升到 70% 白后约 8.35:1，摘要文字层级更清楚。
+ * 2. `dividerLine` 官方 #393939 在 #242424 卡片上对比度约 1.34:1，分隔线几乎不可见；
  *    提升到 #4A4A4A（与 outlineVariant 同族），暗色下保持可见但不抢戏。
+ * 3. `surfaceContainerHigh` 官方与 `surfaceContainer` 同为 #242424 —— 也就是与卡片底色
+ *    完全相同，导致未选中的 SelectChip、CircularProgress 的轨道在暗色下彻底失去边界。
+ *    提升到 #343434（与 Material 层级的 surfaceContainerHigh 对齐，对比度 1.25:1）。
  *
  * 采用 copy() 而不是逐个组件覆盖：一处修改，所有 MIUIX 组件
  * （BasicComponent 摘要、HorizontalDivider、Switch 未选轨道等）同时生效。
+ *
+ * 浅色方案保持官方值：MIUIX 浅色 `surfaceContainerHigh` = #E8E8E8，与白卡片对比 1.29:1，
+ * 本就比 Material 的 #F0F0F0（1.14:1）更清晰，无需改动。
  */
 private val MiuixDark = miuixDarkScheme().copy(
     onSurfaceVariantSummary = Color(0xB3FFFFFF),
     dividerLine = Color(0xFF4A4A4A),
+    surfaceContainerHigh = Color(0xFF343434),
 )
 
 private val MaterialLight: ColorScheme = lightColorScheme(

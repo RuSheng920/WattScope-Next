@@ -136,6 +136,22 @@ class MonitorRepository(
             _bubbleSize.value = value
         }
 
+    /**
+     * 悬浮球松手后是否吸附到屏幕边缘。
+     *
+     * 默认关闭：用户需要能把球放到任意位置（贴边会强制把它拉到左右边缘，
+     * 中间区域完全放不下）。开启后恢复「贴边不挡内容」的旧行为。
+     */
+    private val _bubbleSnapToEdge = MutableStateFlow(prefs.getBoolean("bubble_snap_to_edge", false))
+    val bubbleSnapToEdgeFlow: StateFlow<Boolean> = _bubbleSnapToEdge.asStateFlow()
+
+    var bubbleSnapToEdge: Boolean
+        get() = _bubbleSnapToEdge.value
+        set(value) {
+            prefs.edit().putBoolean("bubble_snap_to_edge", value).apply()
+            _bubbleSnapToEdge.value = value
+        }
+
     // OSD 悬浮窗：开关 + 实时数据（不落库）
     private val _osdEnabled = MutableStateFlow(prefs.getBoolean("osd_enabled", false))
     val osdEnabledFlow: StateFlow<Boolean> = _osdEnabled.asStateFlow()
@@ -616,6 +632,8 @@ class MonitorRepository(
             var lastUiUpdateMs = 0L
             var lastFps: Float? = null
             var lastDevicePowerUw: Long? = null
+            // 记录起点（elapsedRealtime 基准）：自动停止的宽限期从这里算起
+            val recordingStartedAtMs = SystemClock.elapsedRealtime()
             try {
                 while (isActive) {
                     val elapsed = SystemClock.elapsedRealtime()
@@ -669,7 +687,14 @@ class MonitorRepository(
                     // 悬浮窗自动停止：离开被记录应用即停（每 2s 检查一次，使用缓存的前台包名）
                     if (autoStopOnAppExit && elapsed - lastAppCheckMs >= 2_000) {
                         lastAppCheckMs = elapsed
-                        if (!appInspector.isForeground(recordPackage)) break
+                        // 宽限期：开始记录后的前几秒内不做「已离开」判定。
+                        // 此刻目标应用刚获得焦点，系统侧的前台状态（UsageStats 事件、
+                        // dumpsys 任务栈）可能还没稳定，此时比较包名容易误判并立刻结束记录。
+                        if (elapsed - recordingStartedAtMs >= APP_EXIT_GRACE_MS &&
+                            !appInspector.isForeground(recordPackage)
+                        ) {
+                            break
+                        }
                     }
 
                     tick++
@@ -971,5 +996,14 @@ class MonitorRepository(
 
         /** 详情页目标行数，超过则按 stride 抽样。 */
         const val DETAIL_TARGET_ROWS = 3_000
+
+        /**
+         * 悬浮球启动记录后的自动停止宽限期。
+         *
+         * 此刻目标应用刚拿到焦点，系统侧的前台状态尚未稳定（UsageStats 的 ACTIVITY_RESUMED
+         * 事件有入库延迟，dumpsys 任务栈也可能滞后），此时比较包名容易把「刚切过来」
+         * 误判成「已经离开」。宽限期内不判定离开，交给后续每 2 秒一次的检查处理。
+         */
+        const val APP_EXIT_GRACE_MS = 5_000L
     }
 }

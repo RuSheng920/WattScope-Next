@@ -477,9 +477,10 @@ fun SelectChip(
     Row(
         modifier
             .clip(CircleShape)
-            // 未选中态用 Material 层级的 surfaceContainerHigh（暗色 #343434 / 浅色 #F0F0F0）：
-            // MIUIX 暗色 surfaceContainerHigh 与卡片同为 #242424，chip 会完全失去边界
-            .background(if (selected) colors.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
+            // 未选中态用 MIUIX 层级的 surfaceContainerHigh：暗色已在 Theme.kt 统一提亮到
+            // #343434（官方值与卡片同为 #242424 会让 chip 失去边界）；浅色保持官方 #E8E8E8，
+            // 它与白卡片的对比（1.29:1）比 Material 的 #F0F0F0（1.14:1）更清晰。
+            .background(if (selected) colors.primary else colors.surfaceContainerHigh)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -564,7 +565,6 @@ fun SurfaceTile(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    horizontal: Boolean = false,
     leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
     containerColor: Color = MaterialTheme.colorScheme.surface,
@@ -572,51 +572,26 @@ fun SurfaceTile(
     labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     shape: RoundedCornerShape = RoundedCornerShape(18.dp),
 ) {
-    if (horizontal) {
-        Row(
-            modifier
-                .clip(shape)
-                .background(containerColor)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+    Column(
+        modifier
+            .clip(shape)
+            .background(containerColor)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             leading?.invoke()
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
-                Text(
-                    value,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = contentColor,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            trailing?.invoke()
+            Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
         }
-    } else {
-        Column(
-            modifier
-                .clip(shape)
-                .background(containerColor)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                leading?.invoke()
-                Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
-            }
-            Text(
-                value,
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            trailing?.invoke()
-        }
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            color = contentColor,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        trailing?.invoke()
     }
 }
 
@@ -669,11 +644,19 @@ fun AnimatedListItem(
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
+    // 延迟按 index 线性增长要设上限：长列表里第 50 项会等 1.75s 才浮现。
+    val delay = (index.coerceAtMost(MAX_STAGGER_INDEX) * STAGGER_STEP_MS)
     AnimatedVisibility(
         modifier = modifier,
         visible = visible,
-        enter = fadeIn(tween(280, index * 35)) + slideInVertically(tween(280, index * 35)) { it / 6 },
+        enter = fadeIn(tween(280, delay)) + slideInVertically(tween(280, delay)) { it / 6 },
     ) {
         content()
     }
 }
+
+/** 错开动画的最大参与索引：超过后延迟不再增长。 */
+private const val MAX_STAGGER_INDEX = 8
+
+/** 每个索引的延迟步长。 */
+private const val STAGGER_STEP_MS = 35

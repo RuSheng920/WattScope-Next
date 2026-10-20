@@ -59,6 +59,9 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     /** 悬浮球尺寸档位。 */
     val bubbleSize: StateFlow<BubbleSize> = repository.bubbleSizeFlow
 
+    /** 悬浮球松手后是否吸附到屏幕边缘（默认关闭，可自由放置）。 */
+    val bubbleSnapToEdge: StateFlow<Boolean> = repository.bubbleSnapToEdgeFlow
+
     /** OSD 悬浮窗开关与显示项。 */
     val osdEnabled: StateFlow<Boolean> = repository.osdEnabledFlow
     val osdMetrics: StateFlow<List<OsdMetric>> = repository.osdMetricsFlow
@@ -95,6 +98,7 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
     fun setOsdEnabled(enabled: Boolean) { repository.osdEnabled = enabled }
     fun setBubbleSize(size: BubbleSize) { repository.bubbleSize = size }
+    fun setBubbleSnapToEdge(enabled: Boolean) { repository.bubbleSnapToEdge = enabled }
     fun setOsdMetrics(metrics: List<OsdMetric>) = repository.setOsdMetrics(metrics)
     fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
     fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }

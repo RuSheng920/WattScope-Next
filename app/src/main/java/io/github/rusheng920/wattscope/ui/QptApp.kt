@@ -173,6 +173,7 @@ fun QptApp(
     val records by viewModel.records.collectAsState()
     val bubbleEnabled by viewModel.bubbleEnabled.collectAsState()
     val bubbleSize by viewModel.bubbleSize.collectAsState()
+    val bubbleSnapToEdge by viewModel.bubbleSnapToEdge.collectAsState()
     val osdEnabled by viewModel.osdEnabled.collectAsState()
     val osdMetrics by viewModel.osdMetrics.collectAsState()
     val fpsLayer by viewModel.fpsLayer.collectAsState()
@@ -343,6 +344,7 @@ fun QptApp(
                         themeMode = themeMode,
                         bubbleEnabled = bubbleEnabled,
                         bubbleSize = bubbleSize,
+                        bubbleSnapToEdge = bubbleSnapToEdge,
                         osdEnabled = osdEnabled,
                         osdMetrics = osdMetrics,
                         permissions = permissions,
@@ -363,6 +365,7 @@ fun QptApp(
                         onOpenMiuiAutostart = onOpenMiuiAutostart,
                         onToggleBubble = onToggleBubble,
                         onBubbleSize = viewModel::setBubbleSize,
+                        onBubbleSnapToEdge = viewModel::setBubbleSnapToEdge,
                         onToggleOsd = viewModel::setOsdEnabled,
                         onOsdMetricsChange = viewModel::setOsdMetrics,
                         fpsLayer = fpsLayer,
@@ -576,7 +579,9 @@ private fun Dashboard(
                             powerUw = sample.effectivePowerUw,
                             energyUj = sample.energyUj,
                             fraction = sample.effectivePowerUw.toFloat() / maxPower,
-                            percent = (sample.effectivePowerUw * 100 / maxPower).toInt().coerceIn(0, 100),
+                            // 必须走浮点：Long/Long 是整数除法会截断（33.33% → 33%），
+                            // 最大分区甚至会显示 99% 却把进度条画满，自相矛盾。
+                            percent = (sample.effectivePowerUw * 100.0 / maxPower).roundToInt().coerceIn(0, 100),
                             color = chart.palette[index % chart.palette.size],
                             showDivider = index > 0,
                         )
@@ -611,7 +616,9 @@ private fun HeroCard(
 ) {
     val statusColors = LocalStatusColors.current
     val colors = MiuixTheme.colorScheme
-    val heroBrush = remember(enabled, isRecording) {
+    // key 必须包含色值：切换主题时 CompositionLocal 变了但 key 没变，
+    // 缓存的 Brush 会继续用旧主题的颜色，渐变不跟着换。
+    val heroBrush = remember(enabled, isRecording, statusColors, colors) {
         when {
             isRecording -> Brush.verticalGradient(
                 listOf(
@@ -1609,6 +1616,7 @@ private fun SettingsScreen(
     themeMode: ThemeMode,
     bubbleEnabled: Boolean,
     bubbleSize: BubbleSize,
+    bubbleSnapToEdge: Boolean,
     osdEnabled: Boolean,
     osdMetrics: List<OsdMetric>,
     permissions: AppPermissions,
@@ -1629,6 +1637,7 @@ private fun SettingsScreen(
     onOpenMiuiAutostart: () -> Unit,
     onToggleBubble: (Boolean) -> Unit,
     onBubbleSize: (BubbleSize) -> Unit,
+    onBubbleSnapToEdge: (Boolean) -> Unit,
     onToggleOsd: (Boolean) -> Unit,
     onOsdMetricsChange: (List<OsdMetric>) -> Unit,
     fpsLayer: String?,
@@ -1803,6 +1812,16 @@ private fun SettingsScreen(
                             }
                         }
                     }
+                    CardInnerDivider()
+                    ActionRow(
+                        title = "松手吸附边缘",
+                        subtitle = "开启后拖动松手会自动贴到屏幕左右边缘；关闭则停留在松手位置",
+                        icon = Icons.Rounded.Layers,
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        trailing = {
+                            MiuixSwitch(checked = bubbleSnapToEdge, onCheckedChange = onBubbleSnapToEdge)
+                        },
+                    )
                 }
                 CardInnerDivider()
                 ActionRow(
