@@ -75,19 +75,40 @@ jobs:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
-            {
-              echo "storeFile=release.jks"
-              echo "storePassword=$STORE_PASSWORD"
-              echo "keyAlias=$KEY_ALIAS"
-              echo "keyPassword=$KEY_PASSWORD"
-            } > keystore.properties
-            echo "SIGNING=release" >> "$GITHUB_ENV"
-          else
+          set -uo pipefail
+          # 去掉粘贴时可能带入的空白/换行，避免 base64 -d 报 invalid input
+          B64=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]')
+          {
+            echo "KEYSTORE_BASE64 length: ${#B64}（正确值 5888）"
+            echo "KEYSTORE_BASE64 head: ${B64:0:24}"
+            echo "KEYSTORE_BASE64 tail: ${B64: -24}"
+            echo "STORE_PASSWORD length: ${#STORE_PASSWORD}"
+            echo "KEY_ALIAS: $KEY_ALIAS"
+          } | tee diag.txt
+          if [ "${#B64}" -eq 0 ]; then
             echo "::warning::未配置 RELEASE_KEYSTORE_BASE64，本次将发布未签名 APK"
             echo "SIGNING=none" >> "$GITHUB_ENV"
+            exit 0
           fi
+          if ! printf '%s' "$B64" | base64 -d > release.jks 2>/dev/null; then
+            echo "::error::base64 解码失败（长度 ${#B64}）。请确认 secret 是完整的一整行、没有漏掉结尾的 =="
+            exit 1
+          fi
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+          echo "SIGNING=release" >> "$GITHUB_ENV"
+
+      - name: Upload signing diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-diag
+          path: diag.txt
+          if-no-files-found: warn
 
       # Windows 上建的仓库可能没给 gradlew 可执行位（git mode 100644）
       - name: Make gradlew executable
