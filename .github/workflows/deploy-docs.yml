@@ -1,6 +1,6 @@
 name: deploy-docs
 
-# 官网/文档站部署：推送 main 且站点文件有变更时，构建 VitePress 并发布到 GitHub Pages。
+# 官网/文档站部署：推送 main 即构建 VitePress 并发布到 GitHub Pages。
 # 站点源目录就是 docs/（与项目文档同源）。
 #
 # 唯一的一次性手动设置：仓库 Settings → Pages → Source 选 "GitHub Actions"。
