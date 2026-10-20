@@ -199,6 +199,22 @@ enum class OsdMetric(val key: String, val label: String) {
     DEVICE_POWER("device_power", "整机"),
 }
 
+/**
+ * 记录详情页曲线区块。声明顺序即默认排序（分析动线：总功率 → 性能 → 原因下钻 → 分区细分 → 温度）。
+ * 用户可在详情页自定义排序，持久化到全局设置 —— 所有记录共用同一顺序。
+ */
+enum class DetailChartSection(val label: String) {
+    SOC("SOC 功率"),
+    FPS("FPS"),
+    DEVICE_POWER("整机功耗"),
+    CLUSTER_FREQ("CPU 簇频率"),
+    CORE_USAGE("CPU 核心占用"),
+    GPU("GPU 频率/占用"),
+    DDR("DDR 频率"),
+    ZONES("分区功率"),
+    TEMP("温度"),
+}
+
 /** OSD 悬浮窗实时数据（不落库，仅内存展示）。 */
 data class OsdSample(
     val socPowerUw: Long? = null,

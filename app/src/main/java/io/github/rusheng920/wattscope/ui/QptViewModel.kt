@@ -14,6 +14,7 @@ import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.data.repo.MonitorRepository
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
+import io.github.rusheng920.wattscope.domain.DetailChartSection
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
@@ -100,6 +101,10 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun setBubbleSize(size: BubbleSize) { repository.bubbleSize = size }
     fun setBubbleSnapToEdge(enabled: Boolean) { repository.bubbleSnapToEdge = enabled }
     fun setOsdMetrics(metrics: List<OsdMetric>) = repository.setOsdMetrics(metrics)
+
+    /** 详情页曲线区块顺序（全局，所有记录共用）。 */
+    val detailChartOrder: StateFlow<List<DetailChartSection>> = repository.detailChartOrderFlow
+    fun setDetailChartOrder(order: List<DetailChartSection>) = repository.setDetailChartOrder(order)
     fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
     fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }
 

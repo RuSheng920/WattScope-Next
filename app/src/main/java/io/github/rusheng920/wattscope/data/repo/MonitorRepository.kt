@@ -31,6 +31,7 @@ import io.github.rusheng920.wattscope.domain.ClusterFreqSample
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.CoreUsageSample
+import io.github.rusheng920.wattscope.domain.DetailChartSection
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.OsdSample
@@ -316,6 +317,25 @@ class MonitorRepository(
     private fun loadOsdMetrics(): List<OsdMetric> {
         val saved = prefs.getString("osd_metrics", null) ?: return OsdMetric.entries
         return saved.split(',').mapNotNull { key -> OsdMetric.entries.firstOrNull { it.key == key } }
+    }
+
+    /** 详情页曲线区块顺序（全局持久化，所有记录共用）。 */
+    private val _detailChartOrder = MutableStateFlow(loadDetailChartOrder())
+    val detailChartOrderFlow: StateFlow<List<DetailChartSection>> = _detailChartOrder.asStateFlow()
+
+    /** 设置详情页曲线区块顺序（持久化）。 */
+    fun setDetailChartOrder(order: List<DetailChartSection>) {
+        prefs.edit().putString("detail_chart_order", order.joinToString(",") { it.name }).apply()
+        _detailChartOrder.value = order
+    }
+
+    private fun loadDetailChartOrder(): List<DetailChartSection> {
+        val saved = prefs.getString("detail_chart_order", null) ?: return DetailChartSection.entries.toList()
+        // 未知 key（版本变更）丢弃；新增 section（旧存档没有的）按默认位置补齐
+        val parsed = saved.split(',').mapNotNull { name ->
+            DetailChartSection.entries.firstOrNull { it.name == name }
+        }.distinct()
+        return parsed + DetailChartSection.entries.filter { it !in parsed }
     }
 
     init {
@@ -612,23 +632,23 @@ class MonitorRepository(
         // 记录期间由 record 循环接管首页刷新，暂停实时循环
         stopLive()
 
-        // 采样循环内不变的量缓存到局部变量，避免每 tick 读取 StateFlow / 重建命令字符串
+        // 采样循环内不变的量缓存到局部变量，避免每 tick 读取 StateFlow / 重建命令字符串。
         val intervalMs = current.interval.millis
-        val qptEnabled = current.qptEnabled
-        val fastCommand = qptReader.buildSampleCommand(current.zones)
-        val slowCommand = joinShellCommands(
-            fastCommand,
+        // 记录态全量命令：QPT + 附加监控项（簇频率/每核占用/整机功耗/温度/GPU/DDR）合并为
+        // 单次 su 往返，每个 tick 都执行 —— 所有监控项与 SoC 功率同采样率，图表时间轴逐点对齐。
+        val fullCommand = joinShellCommands(
+            qptReader.buildSampleCommand(current.zones),
             auxReader.buildAuxCommand(current.clusters, current.tempSensors, current.gpuSensor, current.ddrFreqPath),
         )
-        // 慢变量（温度/频率/每核占用/整机功率）按 ~1s 节奏采样；QPT 功率保持原始间隔
-        val slowEvery = max(1L, ceil(1_000.0 / intervalMs).toLong())
+        // 每秒 tick 数：用于落库批量（攒 ~1s 再提交）
+        val ticksPerSecond = max(1L, ceil(1_000.0 / intervalMs).toLong())
+        val qptEnabled = current.qptEnabled
 
         samplerJob = scope.launch {
             val recordPackage = app.packageName
             var tick = 0L
             var nextAt = SystemClock.elapsedRealtime()
             var lastAppCheckMs = 0L
-            var lastFpsSampleMs = 0L
             var lastUiUpdateMs = 0L
             var lastFps: Float? = null
             var lastDevicePowerUw: Long? = null
@@ -638,24 +658,19 @@ class MonitorRepository(
                 while (isActive) {
                     val elapsed = SystemClock.elapsedRealtime()
                     val wall = System.currentTimeMillis()
-                    val slow = tick % slowEvery == 0L
-                    val command = if (slow) slowCommand else fastCommand
 
-                    if (command.isNotBlank()) {
-                        val lines = rootManager.execute(command)
+                    if (fullCommand.isNotBlank()) {
+                        val lines = rootManager.execute(fullCommand)
                         val qptSamples = if (qptEnabled) qptReader.parseSampleLines(lines, wall, elapsed) else emptyList()
-                        val auxBatch = if (slow) {
-                            auxReader.parseAuxLines(lines, wall, if (_dualCellMode.value) 2 else 1)
-                        } else null
-                        auxBatch?.devicePowerUw?.let { lastDevicePowerUw = it }
+                        val auxBatch = auxReader.parseAuxLines(lines, wall, if (_dualCellMode.value) 2 else 1)
+                        auxBatch.devicePowerUw?.let { lastDevicePowerUw = it }
 
-                        // 批量落库：攒够 ~1s 再提交，把 WAL fsync 从每天 5 次/秒降到 1 次/秒
+                        // 批量落库：由 tick 计数统一控制，攒 ~1s 再提交一个事务
                         pendingBatches += PendingBatch(wall, qptSamples, auxBatch)
-                        if (pendingBatches.size >= slowEvery) flushBatches(recordId)
 
-                        // OSD 悬浮窗：QPT 每 tick 都新，aux 用上次值兜底
+                        // OSD 悬浮窗：aux 每 tick 都新，读取失败时用上次值兜底
                         if (_osdEnabled.value) {
-                            _osdSample.value = buildOsdSample(qptSamples, auxBatch ?: AuxReader.AuxBatch(), lastFps)
+                            _osdSample.value = buildOsdSample(qptSamples, auxBatch, lastFps)
                         }
                         // UI 节流：合并为一次 StateFlow 更新，减少 CAS + 对象分配 + Compose 重组
                         if (elapsed - lastUiUpdateMs >= UI_THROTTLE_MS) {
@@ -669,18 +684,15 @@ class MonitorRepository(
                         }
                     }
 
-                    // FPS：SurfaceFlinger 层帧时间戳（全屏游戏等价于游戏帧率），每 ~1s 一次。
-                    // 前台包名走 AppInspector 缓存，不再额外 dumpsys activity。
-                    if (elapsed - lastFpsSampleMs >= 1_000) {
-                        lastFpsSampleMs = elapsed
-                        val fps = fpsReader.sample()?.fps
-                        if (fps != null) {
-                            lastFps = fps
-                            pendingBatches += PendingBatch(wall, emptyList(), null, fps)
-                            if (elapsed - lastUiUpdateMs >= UI_THROTTLE_MS) {
-                                lastUiUpdateMs = elapsed
-                                _state.update { it.copy(latestFps = fps) }
-                            }
+                    // FPS：SurfaceFlinger 层帧时间戳（全屏游戏等价于游戏帧率），与 SoC 同采样率落库，
+                    // 保证详情页 FPS 曲线与其余监控项逐点对齐。前台包名走 AppInspector 缓存。
+                    val fps = fpsReader.sample()?.fps
+                    if (fps != null) {
+                        lastFps = fps
+                        pendingBatches += PendingBatch(wall, emptyList(), null, fps)
+                        if (elapsed - lastUiUpdateMs >= UI_THROTTLE_MS) {
+                            lastUiUpdateMs = elapsed
+                            _state.update { it.copy(latestFps = fps) }
                         }
                     }
 
@@ -698,6 +710,8 @@ class MonitorRepository(
                     }
 
                     tick++
+                    // 每 ~1s 提交一个落库事务（tick 计数控制，与 FPS 是否有值无关）
+                    if (tick % ticksPerSecond == 0L) flushBatches(recordId)
                     nextAt += intervalMs
                     val sleep = nextAt - SystemClock.elapsedRealtime()
                     if (sleep > 0) delay(sleep) else nextAt = SystemClock.elapsedRealtime()

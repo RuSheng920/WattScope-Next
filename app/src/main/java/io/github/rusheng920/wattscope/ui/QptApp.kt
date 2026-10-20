@@ -105,6 +105,7 @@ import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
+import io.github.rusheng920.wattscope.domain.DetailChartSection
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
@@ -400,8 +401,11 @@ fun QptApp(
 
         detailId?.let { id ->
             val detail by remember(id) { viewModel.stats(id) }.collectAsState()
+            val chartOrder by viewModel.detailChartOrder.collectAsState()
             DetailPage(
                 detail = detail,
+                chartOrder = chartOrder,
+                onChartOrderChange = viewModel::setDetailChartOrder,
                 onDismiss = { detailId = null },
                 onExport = { asJson -> onExportRecord(id, asJson) },
             )
@@ -1242,78 +1246,202 @@ private fun niceTicks(max: Float, targetCount: Int): List<Float> {
     return ticks
 }
 
+/** 簇名 → 核心区间（按起始核排序），供簇频率与核心占用两个图共享配色逻辑。 */
 @Composable
-private fun AuxCharts(
-    detail: DetailUiState,
-    globalTs: Long?,
-    onTsChange: (Long?) -> Unit,
-) {
-    val palette = LocalChartColors.current.palette
-    val clusterRanges = remember(detail.clusterFreqSamples) {
+private fun rememberClusterRanges(detail: DetailUiState): List<Pair<String, List<IntRange>>> =
+    remember(detail.clusterFreqSamples) {
         detail.clusterFreqSamples.map { it.clusterName }.distinct()
             .mapNotNull { name -> parseCpuRanges(name).takeIf { it.isNotEmpty() }?.let { name to it } }
             .sortedBy { (_, ranges) -> ranges.first().first }
     }
-    val clusterColor = { index: Int ->
-        when (index) {
-            0 -> palette[0]
-            1 -> palette[2]
-            else -> palette[index % palette.size]
-        }
-    }
 
+private fun clusterColorAt(palette: List<Color>, index: Int): Color = when (index) {
+    0 -> palette[0]
+    1 -> palette[2]
+    else -> palette[index % palette.size]
+}
+
+// ---------- 详情页曲线区块：每个区块独立 composable，顺序由 DetailChartSection 设置驱动 ----------
+
+@Composable
+private fun SocChart(
+    detail: DetailUiState,
+    samples: List<SampleEntity>,
+    globalTs: Long?,
+    onTsChange: (Long?) -> Unit,
+) {
+    ZoneCharts(detail, samples.filter { it.zoneName.equals("SOC", true) }, globalTs, onTsChange)
+}
+
+@Composable
+private fun FpsChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    detail.fpsSamples.takeIf { it.isNotEmpty() }?.let { fps ->
+        TimeSeriesChart(
+            "FPS",
+            listOf(SeriesData("FPS", palette[0], fps.map { it.timestampMs to it.fps })),
+            formatter = { v -> "%.1f".format(Locale.US, v) },
+            globalTs = globalTs,
+            onTsChange = onTsChange,
+        )
+    }
+}
+
+@Composable
+private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    detail.devicePowerSamples.takeIf { it.isNotEmpty() }?.let { powers ->
+        TimeSeriesChart(
+            "整机功耗",
+            listOf(SeriesData("整机功耗", palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f })),
+            formatter = { v -> "%.2f W".format(Locale.US, v) },
+            globalTs = globalTs,
+            onTsChange = onTsChange,
+        )
+    }
+}
+
+@Composable
+private fun ClusterFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    val clusterRanges = rememberClusterRanges(detail)
+    detail.clusterFreqSamples.takeIf { it.isNotEmpty() }?.let { freqs ->
+        val series = freqs.groupBy { it.clusterName }.entries
+            .sortedBy { (name, _) -> clusterRanges.indexOfFirst { it.first == name }.takeIf { it >= 0 } ?: Int.MAX_VALUE }
+            .mapIndexed { i, (name, rows) ->
+                SeriesData(name, clusterColorAt(palette, i), rows.map { it.timestampMs to it.freqKhz * 1000f })
+            }
+        TimeSeriesChart("CPU 簇频率", series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
+    }
+}
+
+@Composable
+private fun CoreUsageChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    val clusterRanges = rememberClusterRanges(detail)
+    detail.coreUsageSamples.takeIf { it.isNotEmpty() }?.let { cores ->
+        val series = cores.groupBy { it.coreIndex }.entries.map { (core, rows) ->
+            val clusterIdx = clusterRanges.indexOfFirst { (_, ranges) -> ranges.any { core in it } }
+            val color = if (clusterIdx >= 0) clusterColorAt(palette, clusterIdx) else palette[core % palette.size]
+            SeriesData("C$core", color, rows.map { it.timestampMs to it.usagePercent })
+        }.sortedBy { it.name.removePrefix("C").toIntOrNull() ?: 0 }
+        TimeSeriesChart(
+            "CPU 核心占用",
+            series,
+            { v -> "%.0f%%".format(Locale.US, v) },
+            interactive = false,
+            fixedMax = 100f,
+            yTickCount = 11,
+        )
+    }
+}
+
+@Composable
+private fun DdrFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    detail.ddrFreqSamples.takeIf { it.isNotEmpty() }?.let { ddr ->
+        TimeSeriesChart(
+            "DDR 频率",
+            listOf(SeriesData("DDR", palette[0], ddr.map { it.timestampMs to it.freqHz.toFloat() })),
+            ::formatFreqHz,
+            globalTs = globalTs,
+            onTsChange = onTsChange,
+        )
+    }
+}
+
+@Composable
+private fun ZonePowerSection(detail: DetailUiState, samples: List<SampleEntity>, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    ZoneCharts(detail, samples.filter { !it.zoneName.equals("SOC", true) }, globalTs, onTsChange)
+}
+
+/** 按用户设定的区块顺序渲染详情页曲线（无数据的区块自动跳过）。 */
+@Composable
+private fun DetailCharts(
+    detail: DetailUiState,
+    order: List<DetailChartSection>,
+    samples: List<SampleEntity>,
+    globalTs: Long?,
+    onTsChange: (Long?) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        detail.fpsSamples.takeIf { it.isNotEmpty() }?.let { fps ->
-            TimeSeriesChart(
-                "FPS",
-                listOf(SeriesData("FPS", palette[0], fps.map { it.timestampMs to it.fps })),
-                formatter = { v -> "%.1f".format(Locale.US, v) },
-                globalTs = globalTs,
-                onTsChange = onTsChange,
-            )
-        }
-        detail.clusterFreqSamples.takeIf { it.isNotEmpty() }?.let { freqs ->
-            val series = freqs.groupBy { it.clusterName }.entries
-                .sortedBy { (name, _) -> clusterRanges.indexOfFirst { it.first == name }.takeIf { it >= 0 } ?: Int.MAX_VALUE }
-                .mapIndexed { i, (name, rows) ->
-                    SeriesData(name, clusterColor(i), rows.map { it.timestampMs to it.freqKhz * 1000f })
-                }
-            TimeSeriesChart("CPU 簇频率", series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
-        }
-        detail.coreUsageSamples.takeIf { it.isNotEmpty() }?.let { cores ->
-            val series = cores.groupBy { it.coreIndex }.entries.map { (core, rows) ->
-                val clusterIdx = clusterRanges.indexOfFirst { (_, ranges) -> ranges.any { core in it } }
-                val color = if (clusterIdx >= 0) clusterColor(clusterIdx) else palette[core % palette.size]
-                SeriesData("C$core", color, rows.map { it.timestampMs to it.usagePercent })
-            }.sortedBy { it.name.removePrefix("C").toIntOrNull() ?: 0 }
-            TimeSeriesChart(
-                "CPU 核心占用",
-                series,
-                { v -> "%.0f%%".format(Locale.US, v) },
-                interactive = false,
-                fixedMax = 100f,
-                yTickCount = 11,
-            )
-        }
-        detail.devicePowerSamples.takeIf { it.isNotEmpty() }?.let { powers ->
-            TimeSeriesChart(
-                "整机功耗",
-                listOf(SeriesData("整机功耗", palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f })),
-                formatter = { v -> "%.2f W".format(Locale.US, v) },
-                globalTs = globalTs,
-                onTsChange = onTsChange,
-            )
-        }
-        detail.ddrFreqSamples.takeIf { it.isNotEmpty() }?.let { ddr ->
-            TimeSeriesChart(
-                "DDR 频率",
-                listOf(SeriesData("DDR", palette[0], ddr.map { it.timestampMs to it.freqHz.toFloat() })),
-                ::formatFreqHz,
-                globalTs = globalTs,
-                onTsChange = onTsChange,
-            )
+        order.forEach { section ->
+            when (section) {
+                DetailChartSection.SOC -> SocChart(detail, samples, globalTs, onTsChange)
+                DetailChartSection.FPS -> FpsChart(detail, globalTs, onTsChange)
+                DetailChartSection.DEVICE_POWER -> DevicePowerChart(detail, globalTs, onTsChange)
+                DetailChartSection.CLUSTER_FREQ -> ClusterFreqChart(detail, globalTs, onTsChange)
+                DetailChartSection.CORE_USAGE -> CoreUsageChart(detail, globalTs, onTsChange)
+                DetailChartSection.GPU -> GpuMergedChart(detail, globalTs, onTsChange)
+                DetailChartSection.DDR -> DdrFreqChart(detail, globalTs, onTsChange)
+                DetailChartSection.ZONES -> ZonePowerSection(detail, samples, globalTs, onTsChange)
+                DetailChartSection.TEMP -> TempChart(detail, globalTs, onTsChange)
+            }
         }
     }
+}
+
+/** 曲线排序编辑器：上移/下移调整区块顺序，改动即时持久化，对所有记录生效。 */
+@Composable
+private fun ChartOrderEditor(order: List<DetailChartSection>, onChange: (List<DetailChartSection>) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        MiuixCard(contentPadding = 0.dp) {
+            Column {
+                order.forEachIndexed { index, section ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${index + 1}. ${section.label}",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OrderArrowButton("↑", enabled = index > 0) {
+                            onChange(order.toMutableList().apply { add(index - 1, removeAt(index)) })
+                        }
+                        OrderArrowButton("↓", enabled = index < order.lastIndex) {
+                            onChange(order.toMutableList().apply { add(index + 1, removeAt(index)) })
+                        }
+                    }
+                    if (index < order.lastIndex) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp)
+                                .height(1.dp)
+                                .background(MiuixTheme.colorScheme.dividerLine),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            "排序对所有记录生效",
+            Modifier.padding(start = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun OrderArrowButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+    Text(
+        symbol,
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.titleMedium,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+        },
+    )
 }
 
 @Composable
@@ -2051,6 +2179,8 @@ private fun CardInnerDivider(startPadding: Dp = 16.dp) {
 @Composable
 private fun DetailPage(
     detail: DetailUiState,
+    chartOrder: List<DetailChartSection>,
+    onChartOrderChange: (List<DetailChartSection>) -> Unit,
     onDismiss: () -> Unit,
     onExport: (Boolean) -> Unit,
 ) {
@@ -2060,6 +2190,7 @@ private fun DetailPage(
         detail.stats.forEach { if (!visibleZones.containsKey(it.zoneName)) visibleZones[it.zoneName] = true }
     }
     var crosshairTs by remember { mutableStateOf<Long?>(null) }
+    var editingOrder by remember { mutableStateOf(false) }
     var backProgress by remember { mutableFloatStateOf(0f) }
 
     // 预测性返回：手势进行时页面跟随位移/缩放，松手完成后关闭
@@ -2143,14 +2274,32 @@ private fun DetailPage(
                     }
                     item { StatGrid(detail.stats, detail.samples.size, detail.avgFps) }
                     item { AvgPowerSection(detail) }
-                    item { SectionTitle("曲线") }
-                    if (detail.hasChartData) {
-                        item { AuxCharts(detail, crosshairTs, { crosshairTs = it }) }
-                    }
                     item {
-                        ZoneCharts(detail, detail.samples.filter { visibleZones[it.zoneName] != false }, crosshairTs, { crosshairTs = it })
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle("曲线", Modifier.weight(1f))
+                            if (detail.hasChartData) {
+                                MiuixTextButton(
+                                    text = if (editingOrder) "完成" else "排序",
+                                    onClick = { editingOrder = !editingOrder },
+                                )
+                            }
+                        }
                     }
-                    item { TempChart(detail, crosshairTs, { crosshairTs = it }) }
+                    if (detail.hasChartData) {
+                        if (editingOrder) {
+                            item { ChartOrderEditor(order = chartOrder, onChange = onChartOrderChange) }
+                        }
+                        // 顺序全局持久化：本页调整后，其他记录打开也是同一顺序
+                        item {
+                            DetailCharts(
+                                detail = detail,
+                                order = chartOrder,
+                                samples = detail.samples.filter { visibleZones[it.zoneName] != false },
+                                globalTs = crosshairTs,
+                                onTsChange = { crosshairTs = it },
+                            )
+                        }
+                    }
                     item { SectionTitle("分区筛选") }
                     item {
                         MiuixCard(contentPadding = 0.dp) {
@@ -2240,7 +2389,8 @@ private fun ZoneCharts(
 ) {
     val palette = LocalChartColors.current.palette
     val grouped = samples.groupBy { it.zoneName }
-    // 统一按 SOC → CPU-L（大核）→ CPU-M（小核）→ GPU → NSP 排序，与首页、OSD 一致
+    // 统一按 SOC → CPU-L（大核）→ CPU-M（小核）→ GPU → NSP 排序，与首页、OSD 一致。
+    // GPU 合并图不再楔在这里 —— 详情页已把它排在 GPU 频率/占用专属位置。
     val ordered = grouped.entries.sortedWith(compareBy({ zoneDisplayRank(it.key) }, { it.key }))
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ordered.forEachIndexed { index, entry ->
@@ -2251,9 +2401,6 @@ private fun ZoneCharts(
                 globalTs = globalTs,
                 onTsChange = onTsChange,
             )
-            if (entry.key.equals("cpu-l", ignoreCase = true)) {
-                GpuMergedChart(detail, globalTs, onTsChange)
-            }
         }
     }
 }
