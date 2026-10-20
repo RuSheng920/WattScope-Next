@@ -44,7 +44,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            // 没有 keystore.properties（CI 首次运行、未配置 secrets）时不指定签名配置，
+            // 让 Gradle 产出 *-unsigned.apk，而不是在 signingConfig 上直接失败。
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
