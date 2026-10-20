@@ -28,10 +28,18 @@ jobs:
           sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip#' gradle/wrapper/gradle-wrapper.properties
           grep distributionUrl gradle/wrapper/gradle-wrapper.properties
 
-      - name: Install Android SDK components
+      # runner 自带 Android SDK；预装失败不致命 —— AGP 8 默认会自动下载缺失的
+      # platform / build-tools，这里只是提前装好以节省时间
+      - name: Prepare Android SDK
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          if command -v sdkmanager > /dev/null 2>&1; then
+            yes | sdkmanager --licenses > /dev/null 2>&1 || true
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" \
+              || echo "::warning::sdkmanager 预安装失败，改由 AGP 自动下载"
+          else
+            echo "::warning::runner 未提供 sdkmanager，依赖 AGP 自动下载 SDK 组件"
+          fi
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
 
       - name: Set up Gradle cache
         uses: actions/cache@v4
