@@ -21,24 +21,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # runner 镜像有时不带 Android SDK；这里自建一份 cmdline-tools 兜底，
-      # 已具备可用 sdkmanager 时直接复用，避免无谓下载
+      # runner 镜像有时不带 Android SDK。注意 $GITHUB_PATH 只对后续步骤生效，
+      # 所以本步骤内一律用绝对路径调用 sdkmanager。
       - name: Install Android SDK
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_HOME:-}" ] && [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            echo "复用镜像自带 SDK: $ANDROID_HOME"
-          else
-            mkdir -p "$HOME/android-sdk/cmdline-tools"
-            curl -sSLo /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-            unzip -q /tmp/cmdtools.zip -d "$HOME/android-sdk/cmdline-tools"
-            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
-            echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
-            echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          SDK_DIR="${ANDROID_HOME:-$HOME/android-sdk}"
+          SDKM="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKM" ] && [ -x "$SDK_DIR/cmdline-tools/bin/sdkmanager" ]; then
+            # 有的镜像把 cmdline-tools 直接铺在 cmdline-tools/bin 下，补一个 latest 软链布局
+            mkdir -p "$SDK_DIR/cmdline-tools/latest"
+            cp -r "$SDK_DIR/cmdline-tools/bin/." "$SDK_DIR/cmdline-tools/latest/"
           fi
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          if [ ! -x "$SDKM" ]; then
+            echo "runner 未提供可用的 cmdline-tools，自行下载"
+            rm -rf "$HOME/android-sdk"
+            mkdir -p "$HOME/android-sdk/cmdline-tools"
+            curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdtools.zip -d "$HOME/android-sdk/cmdline-tools"
+            test -d "$HOME/android-sdk/cmdline-tools/cmdline-tools"
+            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+            SDK_DIR="$HOME/android-sdk"
+            SDKM="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "$SDK_DIR/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          echo "sdkmanager=$SDKM ANDROID_HOME=$SDK_DIR"
 
       # wrapper 默认指向华为镜像（国内快），CI 里换回官方源，避免境外 runner 拉不动
       - name: Use official Gradle distribution
