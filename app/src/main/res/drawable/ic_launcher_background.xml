@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标背景：白蓝主色（方案 B），纯白 → 极淡蓝的斜向渐变。
-  不用 100% 纯平白：浅色壁纸上需要一点色阶把图标边界托出来。
+  自适应图标背景（v2 · 燃焰 W）：母稿为纯白底，这里保留极淡的暖白斜向渐变
+  （白 → #FFF6F3，红焰的暖色回声），在浅色壁纸上托出图标边界，肉眼仍读作纯白。
   108x108 画布，铺满即可，Launcher 会按遮罩裁切。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -14,13 +14,13 @@
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
                 android:endX="108"
                 android:endY="108"
                 android:startColor="#FFFFFFFF"
-                android:endColor="#FFE8F1FF"
-                android:startX="0"
-                android:startY="0"
-                android:type="linear" />
+                android:endColor="#FFF6F3" />
         </aapt:attr>
     </path>
 </vector>

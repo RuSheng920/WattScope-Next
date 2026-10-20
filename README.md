@@ -9,7 +9,7 @@
 <p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.1-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.2-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
   <img src="https://img.shields.io/badge/Kotlin%202.3-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.3" />
@@ -148,6 +148,31 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 更新日志
+
+### v1.2.2
+
+本版集中提升**暗色模式可读性**，补齐**双电芯机型**适配，并换上全新的「燃焰 W」应用图标。
+
+#### 新增
+
+- **双电芯机型开关**：设置 → 采样新增「双电芯机型」。部分双电芯机型的电池驱动只上报单路电芯电流，整机功耗会低估约一半；开启后按两路求和，实时预览、OSD 浮层与记录落库同步生效，设置本地持久化
+- **全新应用图标 · 燃焰 W**：斜体粗体 W（功耗 Watt）与右笔焰尾（骁龙燃焰）一形两读，中峰收为闪电尖（功耗遥测）；红白配色 + 亮红至深红渐变。自适应图标前景由母稿等比移植，全部顶点落在中心 72dp 安全圆内（圆形 / 圆角方形 / 水滴遮罩均不裁切），焰尾外缘用二次贝塞尔还原曲线；同步更新 Android 13+ 单色主题图标层，与彩色图标同形
+
+#### 修复
+
+- **退出重进误报「权限未给全」**：Root 授权状态在异步探测完成前为 `null`，被当作未授权弹横幅，点进权限中心却发现都已授予。现在探测期间不再误报，且权限刷新改为应用可见期间每 1.5 秒持续进行，授权变化实时同步到仪表盘
+- **暗色摘要文字在亮容器上不达 WCAG AA**：MIUIX 官方 `onSurfaceVariantSummary` 为 50% 白，在 #343434 容器上对比度仅约 4.4:1；提亮至 70% 白后全面达到 7:1 以上。MIUIX 组件摘要与分隔线在主题层一处提亮、全局生效，无需逐组件覆盖
+- **暗色卡片内分隔线近乎隐形**：`dividerLine` 官方值 #393939 对 #242424 卡片仅约 1.3:1，提至 #4A4A4A（约 1.75:1），可见且不抢眼
+- **暗色 Chip 与卡片同色没边界**：`SelectChip` 未选中态原用 MIUIX `surfaceContainerHigh`（与卡片底色相同），改走 Material 同 role 层级；`surfaceVariant` / `surfaceContainerHigh` 统一提至 #343434，进度条轨道等元素与卡片拉开层级
+- **暗色图表发虚**：网格线与坐标轴提亮，状态胶囊四色底同步校准
+
+#### 变更
+
+- **组件库扩充**：新增统一指标瓦片 `SurfaceTile`、环形进度 `CircularProgress`、列表入场动画 `AnimatedListItem`；空状态图标底改为主色渐变
+- **仪表盘**：HeroCard 增加状态胶囊与全宽主按钮，实时柱状图分区行新增功耗占比；首页大数字与单位基线对齐
+- **权限中心 / 首次引导**：完成度由细进度条改为环形进度 + 中心数字，步骤行改为竖向时间线；引导页顶部图标放大居中，背景改为与仪表盘一致的暗色渐变
+- **设置页**：「关于」卡片改为居中应用徽标 + 版本信息，权限中心入口显示就绪状态胶囊
+- **悬浮窗**：玻璃球录制态状态环外移并增强发光，OSD 空状态字号与对比度提升
 
 ### v1.2.1
 

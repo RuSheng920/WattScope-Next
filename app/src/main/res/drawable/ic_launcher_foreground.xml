@@ -1,23 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景（方案 B · 白底蓝标）：外环（示波器轮廓）+ 蓝色闪电（品牌符号）。
-  108x108 画布，内容控制在中心 66dp 安全区内，避免被圆形/方形遮罩裁切。
+  自适应图标前景（v2 · 燃焰 W）：斜体粗体 W（功耗 Watt）+ 右笔焰尾（骁龙燃焰）+ 中峰闪电尖。
+  由 docs/app-icon-red.svg（512 画布）等比移植：整体缩放 0.153、图形包围盒中心对齐画布中心，
+  全部顶点落在中心 72dp 安全圆内，圆形 / 圆角方形 / 水滴遮罩均不裁切。
+  焰尾外缘用二次贝塞尔 Q 还原母稿曲线，避免折线逼近在大尺寸下发虚。
+  红色渐变（#F23A2A → #AC1019）区间与母稿一致：图形包围盒顶 26.2 → 底 81.7。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 外环：低透明度蓝色，提供"示波器/仪表"的轮廓 -->
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M54,23 A31,31 0 1,1 53.99,23"
-        android:strokeColor="#4D0F5CE8"
-        android:strokeWidth="2.6" />
-
-    <!-- 闪电：品牌蓝，用偏深的 #0F5CE8 保证 48px 下的对比度 -->
-    <path
-        android:fillColor="#FF0F5CE8"
-        android:pathData="M56,29 L35,58 L49,58 L47,77 L73,48 L56,48 Z" />
+    <path android:pathData="M38.52,41.19 L39.10,54.39 L55.93,26.5 L57.98,54.13 L65.16,41.28 L68.41,36.01 L77.03,27.72 Q80.34,36.01 72.47,43.58 L51.28,81.5 L49.11,52.25 L31.61,81.24 L29.99,43.67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="26.2"
+                android:endX="54"
+                android:endY="81.7"
+                android:startColor="#FFF23A2A"
+                android:endColor="#FFAC1019" />
+        </aapt:attr>
+    </path>
 </vector>

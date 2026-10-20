@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 主题图标（Android 13+ 单色层）：系统会按壁纸取色，只保留剪影 -->
+<!--
+  主题图标（Android 13+ 单色层）：v2 燃焰 W 剪影，系统按壁纸取色整体着色。
+  路径与前景层完全一致（同一 108 画布变换），保证单色图标与彩色图标同形。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -7,12 +10,6 @@
     android:viewportHeight="108">
 
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M54,23 A31,31 0 1,1 53.99,23"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.6" />
-
-    <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M56,29 L35,58 L49,58 L47,77 L73,48 L56,48 Z" />
+        android:pathData="M38.52,41.19 L39.10,54.39 L55.93,26.5 L57.98,54.13 L65.16,41.28 L68.41,36.01 L77.03,27.72 Q80.34,36.01 72.47,43.58 L51.28,81.5 L49.11,52.25 L31.61,81.24 L29.99,43.67 Z" />
 </vector>
