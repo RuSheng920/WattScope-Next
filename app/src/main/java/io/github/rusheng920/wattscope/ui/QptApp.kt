@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,9 +125,12 @@ import io.github.rusheng920.wattscope.ui.components.PillTone
 import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.SegmentedControl
 import io.github.rusheng920.wattscope.ui.components.SelectChip
+import io.github.rusheng920.wattscope.ui.components.AnimatedListItem
 import io.github.rusheng920.wattscope.ui.components.StatusPill
+import io.github.rusheng920.wattscope.ui.components.SurfaceTile
 import io.github.rusheng920.wattscope.ui.theme.ChartColors
 import io.github.rusheng920.wattscope.ui.theme.LocalChartColors
+import io.github.rusheng920.wattscope.ui.theme.LocalStatusColors
 import top.yukonga.miuix.kmp.basic.Checkbox as MiuixCheckbox
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -179,6 +182,7 @@ fun QptApp(
     val glassBottomBar by viewModel.glassBottomBar.collectAsState()
     val glassIntensity by viewModel.glassIntensity.collectAsState()
     val glassPauseRecording by viewModel.glassPauseRecording.collectAsState()
+    val dualCellMode by viewModel.dualCellMode.collectAsState()
     val onboardingDone by viewModel.onboardingDone.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
@@ -213,9 +217,8 @@ fun QptApp(
     // 记录期间默认关掉实时模糊：逐帧 RenderEffect 会抬高 GPU 功耗，污染测量结果
     val liveGlass = !(glassPauseRecording && state.isRecording)
 
-    // 权限页 / 首次引导可见时每 1.5s 刷新一次：root、悬浮窗、通知状态变化无需重启应用
-    LaunchedEffect(permissionsOpen, onboardingDone) {
-        if (!permissionsOpen && onboardingDone) return@LaunchedEffect
+    // 应用可见期间每 1.5s 刷新一次权限：root / 悬浮窗 / 通知状态变化无需重启应用
+    LaunchedEffect(Unit) {
         while (true) {
             viewModel.refreshPermissions()
             kotlinx.coroutines.delay(1_500)
@@ -346,6 +349,7 @@ fun QptApp(
                         glassBottomBar = glassBottomBar,
                         glassIntensity = glassIntensity,
                         glassPauseRecording = glassPauseRecording,
+                        dualCellMode = dualCellMode,
                         bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                         onToggleEnabled = viewModel::setEnabled,
                         onInterval = viewModel::setInterval,
@@ -353,6 +357,7 @@ fun QptApp(
                         onGlassBottomBar = viewModel::setGlassBottomBar,
                         onGlassIntensity = viewModel::setGlassIntensity,
                         onGlassPauseRecording = viewModel::setGlassPauseRecording,
+                        onDualCellMode = viewModel::setDualCellMode,
                         onStartService = onStartService,
                         onRequestBatteryWhitelist = onRequestBatteryWhitelist,
                         onOpenMiuiAutostart = onOpenMiuiAutostart,
@@ -456,7 +461,7 @@ private fun Dashboard(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (!permissions.requiredReady) {
+        if (permissions.hasKnownMissingRequiredPermission) {
             item {
                 MiuixCard(
                     onClick = onOpenPermissions,
@@ -571,6 +576,7 @@ private fun Dashboard(
                             powerUw = sample.effectivePowerUw,
                             energyUj = sample.energyUj,
                             fraction = sample.effectivePowerUw.toFloat() / maxPower,
+                            percent = (sample.effectivePowerUw * 100 / maxPower).toInt().coerceIn(0, 100),
                             color = chart.palette[index % chart.palette.size],
                             showDivider = index > 0,
                         )
@@ -603,71 +609,97 @@ private fun HeroCard(
     onToggleEnabled: (Boolean) -> Unit,
     onRecordClick: () -> Unit,
 ) {
-    MiuixCard {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "SOC 实时功耗",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val statusColors = LocalStatusColors.current
+    val colors = MiuixTheme.colorScheme
+    val heroBrush = remember(enabled, isRecording) {
+        when {
+            isRecording -> Brush.verticalGradient(
+                listOf(
+                    statusColors.okBg.copy(alpha = 0.50f),
+                    statusColors.okBg.copy(alpha = 0.10f),
                 )
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        "%.2f".format(Locale.US, socPowerUw / 1_000_000.0),
-                        style = MaterialTheme.typography.displayLarge,
-                        color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        " W",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
+            )
+            enabled -> Brush.verticalGradient(
+                listOf(
+                    colors.primary.copy(alpha = 0.10f),
+                    colors.primary.copy(alpha = 0.02f),
+                )
+            )
+            else -> Brush.verticalGradient(listOf(colors.surfaceContainer, colors.surfaceContainer))
+        }
+    }
+    MiuixCard(containerColor = Color.Transparent, contentPadding = 0.dp) {
+        Box(Modifier.background(heroBrush)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(colors.primary.copy(alpha = 0.12f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    "QPT",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.primary,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "SOC 实时功耗",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                "%.2f".format(Locale.US, socPowerUw / 1_000_000.0),
+                                style = MaterialTheme.typography.displayLarge,
+                                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                " W",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatusPill(
+                            if (isRecording) "录制中" else "待机",
+                            if (isRecording) PillTone.OK else PillTone.NEUTRAL,
+                        )
+                        MiuixSwitch(checked = enabled, onCheckedChange = onToggleEnabled)
+                    }
                 }
-                Text(
-                    status,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusPill(
-                    if (isRecording) "录制中" else "待机",
-                    if (isRecording) PillTone.OK else PillTone.NEUTRAL,
-                )
-                MiuixSwitch(checked = enabled, onCheckedChange = onToggleEnabled)
-                Text(
-                    "QPT",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Spacer(Modifier.height(18.dp))
+                PillButton(
+                    text = if (isRecording) "停止记录" else "开始记录",
+                    onClick = onRecordClick,
+                    enabled = canRecord || isRecording,
+                    filled = !isRecording,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
-        Spacer(Modifier.height(18.dp))
-        PillButton(
-            text = if (isRecording) "停止记录" else "开始记录",
-            onClick = onRecordClick,
-            enabled = canRecord || isRecording,
-            filled = !isRecording,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
 @Composable
 private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    SurfaceTile(label = label, value = value, modifier = modifier)
 }
 
 @Composable
@@ -676,6 +708,7 @@ private fun ZoneRow(
     powerUw: Long,
     energyUj: Long,
     fraction: Float,
+    percent: Int,
     color: Color,
     showDivider: Boolean,
 ) {
@@ -694,11 +727,19 @@ private fun ZoneRow(
                 Box(Modifier.size(8.dp).clip(CircleShape).background(color))
                 Spacer(Modifier.width(10.dp))
                 Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Text(
-                    uwToW(powerUw),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        uwToW(powerUw),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "${percent}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
@@ -1518,8 +1559,9 @@ private fun History(
             }
         }
 
-        items(records, key = { it.id }) { record ->
-            MiuixCard(onClick = { onOpen(record.id) }, contentPadding = 14.dp) {
+        itemsIndexed(records, key = { _, it -> it.id }) { index, record ->
+            AnimatedListItem(index = index) {
+                MiuixCard(onClick = { onOpen(record.id) }, contentPadding = 14.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AppIcon(record.iconPackage ?: record.packageName, Modifier.size(46.dp))
                     Spacer(Modifier.width(14.dp))
@@ -1556,6 +1598,7 @@ private fun History(
         }
     }
 }
+}
 
 // ---------- 设置 ----------
 
@@ -1572,6 +1615,7 @@ private fun SettingsScreen(
     glassBottomBar: Boolean,
     glassIntensity: GlassIntensity,
     glassPauseRecording: Boolean,
+    dualCellMode: Boolean,
     bottomPadding: Dp = 24.dp,
     onToggleEnabled: (Boolean) -> Unit,
     onInterval: (SamplingInterval) -> Unit,
@@ -1579,6 +1623,7 @@ private fun SettingsScreen(
     onGlassBottomBar: (Boolean) -> Unit,
     onGlassIntensity: (GlassIntensity) -> Unit,
     onGlassPauseRecording: (Boolean) -> Unit,
+    onDualCellMode: (Boolean) -> Unit,
     onStartService: () -> Unit,
     onRequestBatteryWhitelist: () -> Unit,
     onOpenMiuiAutostart: () -> Unit,
@@ -1711,6 +1756,18 @@ private fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+
+        item {
+            MiuixCard(contentPadding = 0.dp) {
+                ActionRow(
+                    title = "双电芯机型",
+                    subtitle = "部分双电芯手机 BMS 只上报单路电流，开启后整机功耗按双倍计算",
+                    icon = Icons.Rounded.BatteryChargingFull,
+                    iconTint = MaterialTheme.colorScheme.tertiary,
+                    trailing = { MiuixSwitch(checked = dualCellMode, onCheckedChange = onDualCellMode) },
+                )
             }
         }
 
@@ -1863,7 +1920,10 @@ private fun SettingsScreen(
                     icon = Icons.Rounded.Shield,
                     iconTint = if (permissions.requiredReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     trailing = {
-                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        StatusPill(
+                            if (permissions.requiredReady) "已就绪" else "待授权",
+                            if (permissions.requiredReady) PillTone.OK else PillTone.WARN,
+                        )
                     },
                     onClick = onOpenPermissions,
                 )
@@ -1899,22 +1959,37 @@ private fun SettingsScreen(
         item {
             val context = LocalContext.current
             MiuixCard(contentPadding = 0.dp) {
-                Row(
+                Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(vertical = 22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    IconBadge(Icons.Rounded.Info, MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Text("WattScope Next", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            "版本 ${BuildConfig.VERSION_NAME} · 高通 QPT 功耗遥测",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Box(
+                        Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(32.dp),
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "WattScope Next",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "版本 ${BuildConfig.VERSION_NAME} · 高通 QPT 功耗遥测",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 ActionRow(
                     title = "GitHub 项目主页",
@@ -2134,16 +2209,7 @@ private fun StatGrid(stats: List<ZoneStats>, sampleCount: Int, avgFps: Float) {
 
 @Composable
 private fun SummaryTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
+    SurfaceTile(label = label, value = value, modifier = modifier)
 }
 
 @Composable

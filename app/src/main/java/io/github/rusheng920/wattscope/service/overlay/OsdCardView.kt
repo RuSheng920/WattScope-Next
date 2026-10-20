@@ -45,8 +45,8 @@ class OsdCardView(context: Context) : LinearLayout(context) {
     }
     private val emptyText = TextView(context).apply {
         text = "等待数据…"
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-        setTextColor(Color.argb(0x99, 0xFF, 0xFF, 0xFF))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+        setTextColor(Color.argb(0xCC, 0xFF, 0xFF, 0xFF))
         includeFontPadding = false
     }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }

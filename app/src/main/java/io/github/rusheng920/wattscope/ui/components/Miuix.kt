@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +62,21 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TabRow
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalDensity
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
@@ -150,14 +166,18 @@ fun ActionRow(
     }
 }
 
-/** 36dp 圆角图标徽标，底色为主色 12% 透明。 */
+/**
+ * 36dp 圆角图标徽标，底色为主色半透明。
+ * 暗色下主色 12% 透明在深色卡片上过于微弱，提升到 18% 保证图标容器可辨识。
+ */
 @Composable
 fun IconBadge(icon: ImageVector, tint: Color = MiuixTheme.colorScheme.primary, size: Dp = 36.dp) {
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
     Box(
         Modifier
             .size(size)
             .clip(RoundedCornerShape(10.dp))
-            .background(tint.copy(alpha = 0.12f)),
+            .background(tint.copy(alpha = if (isDark) 0.18f else 0.12f)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.56f))
@@ -457,7 +477,9 @@ fun SelectChip(
     Row(
         modifier
             .clip(CircleShape)
-            .background(if (selected) colors.primary else colors.surfaceContainerHigh)
+            // 未选中态用 Material 层级的 surfaceContainerHigh（暗色 #343434 / 浅色 #F0F0F0）：
+            // MIUIX 暗色 surfaceContainerHigh 与卡片同为 #242424，chip 会完全失去边界
+            .background(if (selected) colors.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -481,7 +503,7 @@ fun SelectChip(
     }
 }
 
-/** 空状态：圆形图标 + 标题 + 说明，避免列表为空时只剩一行灰字。 */
+/** 空状态：渐变图标底 + 标题 + 说明，避免列表为空时只剩一行灰字。 */
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -490,28 +512,42 @@ fun EmptyState(
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
+    val isDark = colors.background.luminance() < 0.5f
     Column(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(horizontal = 24.dp, vertical = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             Modifier
-                .size(56.dp)
+                .size(60.dp)
                 .clip(CircleShape)
-                .background(colors.surfaceContainerHigh),
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            // 暗色下 13% 的主色渐变在深底上几乎不可见，提升到 20%/7%
+                            colors.primary.copy(alpha = if (isDark) 0.20f else 0.13f),
+                            colors.primary.copy(alpha = if (isDark) 0.07f else 0.04f),
+                        ),
+                    )
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 icon,
                 contentDescription = null,
-                tint = colors.onSurfaceVariantSummary,
-                modifier = Modifier.size(26.dp),
+                tint = colors.primary.copy(alpha = if (isDark) 1f else 0.86f),
+                modifier = Modifier.size(28.dp),
             )
         }
-        Spacer(Modifier.height(14.dp))
-        Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.onSurface,
+            fontWeight = FontWeight.SemiBold,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             description,
@@ -519,5 +555,125 @@ fun EmptyState(
             color = colors.onSurfaceVariantSummary,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/** 统一指标瓦片：仪表盘小指标、详情页统计网格共用。 */
+@Composable
+fun SurfaceTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    horizontal: Boolean = false,
+    leading: @Composable (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    shape: RoundedCornerShape = RoundedCornerShape(18.dp),
+) {
+    if (horizontal) {
+        Row(
+            modifier
+                .clip(shape)
+                .background(containerColor)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            leading?.invoke()
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
+                Text(
+                    value,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = contentColor,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            trailing?.invoke()
+        }
+    } else {
+        Column(
+            modifier
+                .clip(shape)
+                .background(containerColor)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                leading?.invoke()
+                Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
+            }
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                color = contentColor,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            trailing?.invoke()
+        }
+    }
+}
+
+/** 环形进度指示器：用于权限完成度等紧凑场景。 */
+@Composable
+fun CircularProgress(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    color: Color = MiuixTheme.colorScheme.primary,
+    trackColor: Color = MiuixTheme.colorScheme.surfaceContainerHigh,
+    strokeWidth: Dp = 6.dp,
+) {
+    val animated by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "circularProgress",
+    )
+    val stroke = with(LocalDensity.current) { strokeWidth.toPx() }
+    Canvas(modifier.size(52.dp)) {
+        val diameter = size.minDimension - stroke
+        val topLeft = Offset(stroke / 2, stroke / 2)
+        val arcSize = Size(diameter, diameter)
+        drawArc(
+            color = trackColor,
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+        drawArc(
+            color = color,
+            startAngle = -90f,
+            sweepAngle = animated * 360f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** 列表项入场动画：淡入 + 轻微上移，按 [index] 错开时序。 */
+@Composable
+fun AnimatedListItem(
+    index: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    AnimatedVisibility(
+        modifier = modifier,
+        visible = visible,
+        enter = fadeIn(tween(280, index * 35)) + slideInVertically(tween(280, index * 35)) { it / 6 },
+    ) {
+        content()
     }
 }

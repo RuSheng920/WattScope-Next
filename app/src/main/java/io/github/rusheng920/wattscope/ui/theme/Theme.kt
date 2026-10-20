@@ -29,7 +29,21 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightScheme
  */
 
 private val MiuixLight = miuixLightScheme()
-private val MiuixDark = miuixDarkScheme()
+/**
+ * MIUIX 暗色官方值的两处提亮（其余保持官方不变）：
+ *
+ * 1. `onSurfaceVariantSummary` 官方为 0x80FFFFFF（50% 白），在 #242424 卡片上对比度仅 ~3.6:1，
+ *    不达 WCAG AA 4.5:1；提升到 70% 白（~7.5:1），设置页与权限页的摘要文字更清晰。
+ * 2. `dividerLine` 官方 #393939 在 #242424 卡片上对比度 ~1.2:1，分隔线几乎不可见；
+ *    提升到 #4A4A4A（与 outlineVariant 同族），暗色下保持可见但不抢戏。
+ *
+ * 采用 copy() 而不是逐个组件覆盖：一处修改，所有 MIUIX 组件
+ * （BasicComponent 摘要、HorizontalDivider、Switch 未选轨道等）同时生效。
+ */
+private val MiuixDark = miuixDarkScheme().copy(
+    onSurfaceVariantSummary = Color(0xB3FFFFFF),
+    dividerLine = Color(0xFF4A4A4A),
+)
 
 private val MaterialLight: ColorScheme = lightColorScheme(
     primary = Color(0xFF3482FF),
@@ -68,7 +82,7 @@ private val MaterialDark: ColorScheme = darkColorScheme(
     onPrimaryContainer = Color(0xFFAECDFF),
     secondary = Color(0xFFB0B0B0),
     onSecondary = Color(0xFF1A1A1A),
-    secondaryContainer = Color(0xFF2E2E2E),
+    secondaryContainer = Color(0xFF343434),
     onSecondaryContainer = Color(0xFFD9D9D9),
     tertiary = Color(0xFFFFC24B),
     onTertiary = Color(0xFF3A2600),
@@ -78,12 +92,12 @@ private val MaterialDark: ColorScheme = darkColorScheme(
     onBackground = Color(0xE6FFFFFF),
     surface = Color(0xFF242424),
     onSurface = Color(0xFFF2F2F2),
-    surfaceVariant = Color(0xFF2D2D2D),
-    onSurfaceVariant = Color(0x99FFFFFF),
+    surfaceVariant = Color(0xFF343434),
+    onSurfaceVariant = Color(0xB3FFFFFF),
     surfaceContainer = Color(0xFF242424),
-    surfaceContainerHigh = Color(0xFF2D2D2D),
-    outline = Color(0xFF404040),
-    outlineVariant = Color(0xFF393939),
+    surfaceContainerHigh = Color(0xFF343434),
+    outline = Color(0xFF5C5C5C),
+    outlineVariant = Color(0xFF4A4A4A),
     error = Color(0xFFFF6B5E),
     onError = Color(0xFF3A0906),
     errorContainer = Color(0xFF3A1512),
@@ -111,10 +125,10 @@ private val LightStatus = StatusColors(
 )
 
 private val DarkStatus = StatusColors(
-    okBg = Color(0xFF16301F), okFg = Color(0xFF6FE08F),
-    warnBg = Color(0xFF3A2A10), warnFg = Color(0xFFFFD08A),
-    errorBg = Color(0xFF3A1512), errorFg = Color(0xFFFF9A8F),
-    neutralBg = Color(0xFF2D2D2D), neutralFg = Color(0xFFB0B0B0),
+    okBg = Color(0xFF1C3D28), okFg = Color(0xFF6FE08F),
+    warnBg = Color(0xFF46351C), warnFg = Color(0xFFFFD08A),
+    errorBg = Color(0xFF4A201B), errorFg = Color(0xFFFF9A8F),
+    neutralBg = Color(0xFF343434), neutralFg = Color(0xFFB0B0B0),
 )
 
 val LocalStatusColors = staticCompositionLocalOf { LightStatus }
@@ -147,14 +161,14 @@ private val LightCharts = ChartColors(
 )
 
 private val DarkCharts = ChartColors(
-    axis = Color(0xFF4A4A4A),
-    grid = Color(0xFF2E2E2E),
+    axis = Color(0xFF6B6B6B),
+    grid = Color(0xFF3A3A3A),
     label = Color(0xFFB0B0B0),
     crosshair = Color(0xCCFFFFFF),
     tooltipBg = Color(0xF2242424),
-    tooltipBorder = Color(0xFF3A3A3A),
+    tooltipBorder = Color(0xFF4A4A4A),
     tooltipText = Color(0xFFF2F2F2),
-    tooltipMuted = Color(0xFF9A9A9A),
+    tooltipMuted = Color(0xFFABABAB),
     palette = listOf(
         Color(0xFF5B9DFF), Color(0xFF33D6A6), Color(0xFFFFCF66), Color(0xFFFF7A7A),
         Color(0xFFC9A7FF), Color(0xFFB4F17F), Color(0xFFFF9DE2), Color(0xFF7ED9E8),

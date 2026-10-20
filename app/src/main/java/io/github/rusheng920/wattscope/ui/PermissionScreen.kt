@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BatteryChargingFull
@@ -44,13 +46,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.ui.components.CircularProgress
 import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixCard
 import io.github.rusheng920.wattscope.ui.components.PillButton
@@ -218,11 +223,11 @@ fun PermissionCenter(
         item { SectionTitle("首次使用") }
         item {
             MiuixCard(contentPadding = 16.dp) {
-                StepRow(1, "授予 Root 权限", "在 KernelSU / Magisk 弹窗中允许本应用")
-                Spacer(Modifier.height(12.dp))
-                StepRow(2, "开启悬浮窗与通知", "悬浮球、OSD 浮层和前台服务依赖这两项")
-                Spacer(Modifier.height(12.dp))
-                StepRow(3, "回到仪表盘开始记录", "也可以单击悬浮球，退出被记录应用时自动停止")
+                StepRow(1, "授予 Root 权限", "在 KernelSU / Magisk 弹窗中允许本应用", isLast = false)
+                Spacer(Modifier.height(8.dp))
+                StepRow(2, "开启悬浮窗与通知", "悬浮球、OSD 浮层和前台服务依赖这两项", isLast = false)
+                Spacer(Modifier.height(8.dp))
+                StepRow(3, "回到仪表盘开始记录", "也可以单击悬浮球，退出被记录应用时自动停止", isLast = true)
             }
         }
     }
@@ -327,13 +332,26 @@ fun OnboardingScreen(
     onFinish: () -> Unit,
     onSkip: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+    // 引导页底色与仪表盘 pageBrush 保持一致（顶栏/首屏无接缝）；
+    // 纯黑在引导页上过于单调，带一点纵向冷暖过渡后，权限卡片的 surfaceContainer 才有「浮起」的参照
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val pageBrush = remember(isDark) {
+        if (isDark) {
+            Brush.verticalGradient(listOf(Color(0xFF000000), Color(0xFF05080D), Color(0xFF0A1119)))
+        } else {
+            Brush.verticalGradient(listOf(Color(0xFFF7F7F7), Color(0xFFF5F7FB), Color(0xFFEEF3FA)))
+        }
+    }
+    Box(Modifier.fillMaxSize().background(pageBrush)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 8.dp)) {
+            Column(
+                Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Box(
                     Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(18.dp))
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(22.dp))
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -341,16 +359,17 @@ fun OnboardingScreen(
                         Icons.Rounded.Speed,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(36.dp),
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(18.dp))
                 Text("WattScope Next", style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "高通 QPT 实时功耗遥测。开始前先完成必要的授权，之后可在「设置 → 权限中心」随时调整。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
             }
 
@@ -391,26 +410,36 @@ fun OnboardingScreen(
     }
 }
 
-/** 步骤行：圆形序号 + 标题/说明。 */
+/** 步骤行：竖向时间线 + 圆形序号 + 标题/说明。 */
 @Composable
-private fun StepRow(index: Int, title: String, description: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier
-                .size(22.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                index.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold,
-            )
+private fun StepRow(index: Int, title: String, description: String, isLast: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    index.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (!isLast) {
+                Box(
+                    Modifier
+                        .width(2.dp)
+                        .height(28.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 3.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(
                 description,
@@ -421,14 +450,25 @@ private fun StepRow(index: Int, title: String, description: String) {
     }
 }
 
-/** 顶部完成度卡片：核心三项授权进度。 */
+/** 顶部完成度卡片：核心三项授权进度的环形指示器。 */
 @Composable
 private fun PermissionProgressCard(permissions: AppPermissions) {
     val granted = permissions.requiredGranted()
     val total = permissions.requiredTotal()
     val ready = granted >= total
+    val fraction = granted.toFloat() / total.coerceAtLeast(1)
     MiuixCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgress(fraction = fraction)
+                Text(
+                    "$granted/$total",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     if (ready) "权限已就绪" else "还需完成 ${total - granted} 项授权",
@@ -441,35 +481,10 @@ private fun PermissionProgressCard(permissions: AppPermissions) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            StatusPill(
-                "$granted / $total",
-                if (ready) PillTone.OK else PillTone.WARN,
-            )
         }
-        Spacer(Modifier.height(14.dp))
-        ProgressBar(fraction = granted.toFloat() / total)
     }
 }
 
-/** 细进度条（6dp），用于权限完成度。 */
-@Composable
-fun ProgressBar(fraction: Float, color: Color = MaterialTheme.colorScheme.primary) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(color),
-        )
-    }
-}
 
 /**
  * 单条权限行：图标 + 标题/副标题 + 状态胶囊 + 操作按钮。

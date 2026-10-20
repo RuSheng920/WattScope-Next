@@ -160,17 +160,17 @@ class GlassBubbleView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, r, bodyPaint)
         canvas.drawCircle(cx, cy, r, sheenPaint)
 
-        // 4. 状态环（记录中）
+        // 4. 亮边
+        canvas.drawCircle(cx, cy, r - rimWidth * 0.5f, rimPaint)
+
+        // 5. 状态环（记录中）：画在亮边外侧，更醒目
         if (mode == Mode.RECORDING) {
-            ringGlowPaint.color = Color.argb(0x3D, 0x3D, 0xD6, 0x8C)
+            ringGlowPaint.color = Color.argb(0x55, 0x3D, 0xD6, 0x8C)
             ringPaint.color = recordingAccent
-            val ringRadius = r - ringWidth * 0.5f
+            val ringRadius = r + ringWidth * 0.5f
             canvas.drawCircle(cx, cy, ringRadius, ringGlowPaint)
             canvas.drawCircle(cx, cy, ringRadius, ringPaint)
         }
-
-        // 5. 亮边
-        canvas.drawCircle(cx, cy, r - rimWidth * 0.5f, rimPaint)
 
         // 6. 图标
         drawGlyph(canvas, r)
