@@ -13,12 +13,6 @@ name: deploy-docs
 on:
   push:
     branches: [main]
-    paths:
-      - "docs/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".npmrc"
-      - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
 permissions:
