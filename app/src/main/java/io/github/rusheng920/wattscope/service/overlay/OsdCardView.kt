@@ -20,7 +20,8 @@ import kotlin.math.roundToInt
  * 标签左对齐、数值右对齐并固定等宽字体，数值列不会因为位数变化而整体抖动 ——
  * 这是旧版单 TextView 最大的问题：一行里既有中文标签又有变宽的数字，永远对不齐。
  *
- * 面板底色用「深色垂直渐变 + 1dp 亮边」，在亮色/深色壁纸上都能读；
+ * 面板底色用「白色垂直渐变 + 1dp 深色细边」，配深色文字 —— 在亮色/深色壁纸上都可读，
+ * 且与应用内的浅色卡片观感一致（不再是一块突兀的黑板）。
  * 不做实时模糊：OSD 是常驻逐帧刷新的浮层，模糊会把 GPU 功耗记到被测应用头上。
  */
 class OsdCardView(context: Context) : LinearLayout(context) {
@@ -29,16 +30,20 @@ class OsdCardView(context: Context) : LinearLayout(context) {
     private val valueViews = LinkedHashMap<OsdMetric, TextView>()
     private var currentMetrics: List<OsdMetric> = emptyList()
 
+    /** 白玻璃面板上的深冷灰文字色（声明顺序约束：内联使用）。 */
+    private val ink = Color.rgb(0x1A, 0x21, 0x2B)
+    private val inkMuted = Color.argb(0x99, 0x2A, 0x32, 0x3E)
+
     private val statusDot = View(context).apply {
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.argb(0x66, 0xFF, 0xFF, 0xFF))
+            setColor(Color.argb(0x99, 0x4A, 0x55, 0x63))
         }
     }
     private val statusText = TextView(context).apply {
         text = "LIVE"
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
-        setTextColor(Color.argb(0x8A, 0xFF, 0xFF, 0xFF))
+        setTextColor(Color.argb(0x8A, 0x2A, 0x32, 0x3E))
         letterSpacing = 0.16f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         includeFontPadding = false
@@ -46,7 +51,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
     private val emptyText = TextView(context).apply {
         text = "等待数据…"
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-        setTextColor(Color.argb(0xCC, 0xFF, 0xFF, 0xFF))
+        setTextColor(Color.argb(0xCC, 0x2A, 0x32, 0x3E))
         includeFontPadding = false
     }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
@@ -56,10 +61,10 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         setPadding((12 * density).roundToInt(), (10 * density).roundToInt(), (12 * density).roundToInt(), (10 * density).roundToInt())
         background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.argb(0xEE, 0x11, 0x18, 0x1E), Color.argb(0xEC, 0x08, 0x0C, 0x10)),
+            intArrayOf(Color.argb(0xF2, 0xFF, 0xFF, 0xFF), Color.argb(0xEE, 0xF0, 0xF5, 0xFB)),
         ).apply {
             cornerRadius = 17 * density
-            setStroke((1 * density).roundToInt(), Color.argb(0x26, 0xFF, 0xFF, 0xFF))
+            setStroke((1 * density).roundToInt(), Color.argb(0x24, 0x00, 0x00, 0x00))
         }
 
         val header = LinearLayout(context).apply {
@@ -71,7 +76,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
             TextView(context).apply {
                 text = "WATTSCOPE"
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f)
-                setTextColor(Color.argb(0xB0, 0xFF, 0xFF, 0xFF))
+                setTextColor(Color.argb(0xB0, 0x2A, 0x32, 0x3E))
                 letterSpacing = 0.18f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 includeFontPadding = false
@@ -85,7 +90,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         addView(header)
 
         addView(
-            View(context).apply { setBackgroundColor(Color.argb(0x1A, 0xFF, 0xFF, 0xFF)) },
+            View(context).apply { setBackgroundColor(Color.argb(0x1A, 0x00, 0x00, 0x00)) },
             LayoutParams(LayoutParams.MATCH_PARENT, 1).apply {
                 topMargin = (7 * density).roundToInt()
                 bottomMargin = (6 * density).roundToInt()
@@ -121,7 +126,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
                 TextView(context).apply {
                     text = metric.label
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                    setTextColor(Color.argb(0x99, 0xFF, 0xFF, 0xFF))
+                    setTextColor(inkMuted)
                     letterSpacing = 0.02f
                     includeFontPadding = false
                 },
@@ -130,7 +135,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
             val value = TextView(context).apply {
                 text = "--"
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-                setTextColor(Color.argb(0xF0, 0xFF, 0xFF, 0xFF))
+                setTextColor(ink)
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
                 includeFontPadding = false
                 gravity = Gravity.END
@@ -151,10 +156,10 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         if (statusText.text != label) {
             statusText.text = label
             statusText.setTextColor(
-                if (recording) Color.argb(0xF0, 0x5C, 0xE0, 0x9A) else Color.argb(0x8A, 0xFF, 0xFF, 0xFF),
+                if (recording) Color.argb(0xF0, 0x14, 0x7A, 0x42) else Color.argb(0x8A, 0x2A, 0x32, 0x3E),
             )
             (statusDot.background as? GradientDrawable)?.setColor(
-                if (recording) Color.argb(0xF0, 0x3D, 0xD6, 0x8C) else Color.argb(0x99, 0xFF, 0xFF, 0xFF),
+                if (recording) Color.argb(0xF0, 0x22, 0xB0, 0x62) else Color.argb(0x99, 0x4A, 0x55, 0x63),
             )
         }
         if (sample == null) {

@@ -13,20 +13,20 @@ import android.view.View
 import kotlin.math.min
 
 /**
- * 悬浮球本体：一颗自绘的深色玻璃球，替代原来「圆形底色 + ▶ 文字」的 TextView。
+ * 悬浮球本体：一颗自绘的白色玻璃球，替代原来「圆形底色 + ▶ 文字」的 TextView。
  *
  * 画法分五层，全部走硬件加速的渐变/路径，没有 RenderEffect、没有逐帧动画，
  * 常驻显示时只在状态变化时重绘一次 —— 本应用用于测量功耗，
  * 悬浮球自身的刷新成本必须趋近于零：
  *
  * 1. 接触阴影：边缘外侧的径向渐变，让球「浮」在壁纸上而不是贴上去；
- * 2. 球体底色：近黑冷调，保证任何壁纸上白色图标都可读；
- * 3. 球体光泽：左上光源的斜向径向渐变（高光 → 透明 → 右下暗部）；
- * 4. 边缘轮廓：1dp 线性渐变亮边（左上最亮、中间几乎消失、右下补一点环境反光）；
+ * 2. 球体底色：高不透明度白色，保证任何壁纸上深色图标都可读；
+ * 3. 球体光泽：左上光源的斜向径向渐变（高光 → 透明 → 右下冷灰暗部）；
+ * 4. 边缘轮廓：1dp 线性渐变亮边（左上最亮、右下补一点冷灰轮廓，在浅色壁纸上不溶掉）；
  * 5. 顶部内高光 + 状态环 + 图标。
  *
  * 记录中在球体外圈加一圈绿色状态环（与应用内「录制中」胶囊同色系），
- * 图标切换为停止方块；待机时是播放三角。
+ * 图标切换为停止方块；待机时是播放三角。图标用深色：白底上白图标不可读。
  */
 class GlassBubbleView(context: Context) : View(context) {
 
@@ -73,7 +73,8 @@ class GlassBubbleView(context: Context) : View(context) {
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         strokeWidth = 1.6f * resources.displayMetrics.density
-        color = Color.WHITE
+        // 深冷灰图标：白玻璃上可读（声明顺序约束：颜色内联，不能引用后置属性）
+        color = Color.rgb(0x1F, 0x26, 0x31)
     }
     private val glyphPath = Path()
     private val stopRect = RectF()
@@ -116,10 +117,10 @@ class GlassBubbleView(context: Context) : View(context) {
         bodyPaint.shader = RadialGradient(
             cx - r * 0.34f, cy - r * 0.42f, r * 1.62f,
             intArrayOf(
-                Color.argb(0x4A, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x18, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x06, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x4D, 0, 0, 0),
+                Color.argb(0x66, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x0F, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x05, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x38, 0x8C, 0x99, 0xAB),
             ),
             floatArrayOf(0f, 0.32f, 0.64f, 1f),
             Shader.TileMode.CLAMP,
@@ -135,10 +136,10 @@ class GlassBubbleView(context: Context) : View(context) {
         rimPaint.shader = LinearGradient(
             cx - r, cy - r, cx + r, cy + r,
             intArrayOf(
-                Color.argb(0xC4, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x26, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x0A, 0xFF, 0xFF, 0xFF),
-                Color.argb(0x52, 0xFF, 0xFF, 0xFF),
+                Color.argb(0xFF, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x3C, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x12, 0xFF, 0xFF, 0xFF),
+                Color.argb(0x59, 0x65, 0x71, 0x80),
             ),
             floatArrayOf(0f, 0.38f, 0.72f, 1f),
             Shader.TileMode.CLAMP,
@@ -152,8 +153,8 @@ class GlassBubbleView(context: Context) : View(context) {
         // 1. 接触阴影
         canvas.drawCircle(cx, cy, r * 1.34f, shadowPaint)
 
-        // 2. 球体底色（近黑冷调，91% 不透明，保证图标可读）
-        basePaint.color = Color.argb(232, 0x10, 0x17, 0x1D)
+        // 2. 球体底色（高不透明白，90%，保证深色图标在任何壁纸上可读）
+        basePaint.color = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
         canvas.drawCircle(cx, cy, r, basePaint)
 
         // 3. 球体光泽

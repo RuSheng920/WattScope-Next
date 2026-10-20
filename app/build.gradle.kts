@@ -23,8 +23,8 @@ android {
         targetSdk = 36
         // 测试版：versionCode 必须大于已发布的 8，否则无法覆盖安装正式版。
         // 正式发版时改回稳定的 versionName（1.2.3）并递增 versionCode。
-        versionCode = 9
-        versionName = "1.2.3-beta.1"
+        versionCode = 10
+        versionName = "1.2.3-beta.2"
     }
 
     signingConfigs {

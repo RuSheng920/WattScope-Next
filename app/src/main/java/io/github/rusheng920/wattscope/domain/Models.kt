@@ -82,14 +82,14 @@ enum class GlassIntensity(
 /**
  * 悬浮球尺寸档位（窗口尺寸，含渐变出血的 5dp 边距，实际球体比它小 10dp）。
  *
- * 悬浮球是常驻浮层，默认 48dp 窗口 / 38dp 球体，比旧版 52dp 实心圆明显更小；
- * 需要更不挡内容时可切到「迷你」，手指粗或需要更大命中率时切到「大」。
+ * 悬浮球是常驻浮层，默认 40dp 窗口 / 30dp 球体；需要更不挡内容时可切到「迷你」，
+ * 手指粗或需要更大命中率时切到「大」。
  * 尺寸改动由服务监听偏好实时应用，无需重启。
  */
 enum class BubbleSize(val key: String, val label: String, val sizeDp: Int) {
-    MINI("mini", "迷你", 40),
-    STANDARD("standard", "标准", 48),
-    LARGE("large", "大", 56),
+    MINI("mini", "迷你", 32),
+    STANDARD("standard", "标准", 40),
+    LARGE("large", "大", 48),
 }
 
 enum class SamplingInterval(val millis: Long, val label: String) {

@@ -1,0 +1,9 @@
+<resources>
+    <!-- 浅色启动窗口背景与页面首屏色一致：进入应用不再从黑屏闪到白页 -->
+    <style name="Theme.QptPowerMonitor" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F7F7F7</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">#3482FF</item>
+    </style>
+</resources>

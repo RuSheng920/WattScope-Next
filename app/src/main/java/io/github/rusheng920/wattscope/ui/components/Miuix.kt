@@ -51,6 +51,7 @@ import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.ui.theme.LocalStatusColors
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
@@ -62,6 +63,7 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -77,7 +79,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
@@ -194,7 +195,15 @@ fun MiuixSwitch(
     Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
 }
 
-/** MIUIX 分段控件（TabRow）。 */
+/**
+ * MIUIX 分段控件（TabRow）。
+ *
+ * MIUIX 默认样式有两个问题：
+ * 1. 容器背景是「直角矩形」且用 `surface`（暗色即纯黑），套在 #242424 的卡片里
+ *    就成了「黑色方块里放圆角胶囊」，非常突兀 —— 这里外层 clip 一层与卡片协调的圆角；
+ * 2. 容器底色 surface 与选中胶囊 surfaceContainer 在暗色下层次不清 ——
+ *    换成 surfaceContainerHigh 作底、surface 作选中胶囊（暗色下反色，HyperOS 风格）。
+ */
 @Composable
 fun SegmentedControl(
     options: List<String>,
@@ -202,16 +211,29 @@ fun SegmentedControl(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val cs = MiuixTheme.colorScheme
     TabRow(
         tabs = options,
         selectedTabIndex = selectedIndex,
         onTabSelected = onSelect,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(21.dp)),
+        colors = TabRowDefaults.tabRowColors(
+            backgroundColor = cs.surfaceContainerHigh,
+            contentColor = cs.onSurfaceVariantSummary,
+            selectedBackgroundColor = cs.surface,
+            selectedContentColor = cs.onBackground,
+        ),
     )
 }
 
 /**
- * 主按钮用 MIUIX Button；次要操作用 MIUIX TextButton。
+ * 主按钮 / 次要按钮统一走 MIUIX Button。
+ *
+ * 之前 unfilled 态用 MIUIX TextButton，它内部用 MIUIX 自己的文字样式渲染 text，
+ * 与 filled 态自绘的 `labelLarge` 文字大小不一致 —— 「开始记录 / 停止记录」切换时
+ * 文字会跳一下。现在两个态都用 Button + 同一段 Text，仅颜色不同。
  *
  * 圆角刻意给一个远大于按钮高度的值：`RoundedCornerShape` 会按实际高度把半径
  * clamp 到 min(w,h)/2，因此无论系统字体放大到多少、按钮被撑高到什么尺寸，
@@ -229,34 +251,32 @@ fun PillButton(
     horizontalPadding: Dp = 20.dp,
 ) {
     val pillRadius = 1000.dp
-    if (filled) {
-        Button(
-            onClick = onClick,
-            modifier = modifier,
-            enabled = enabled,
-            cornerRadius = pillRadius,
-            minWidth = 56.dp,
-            minHeight = height,
-            insideMargin = PaddingValues(horizontal = horizontalPadding, vertical = 0.dp),
-        ) {
-            Text(
-                text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                softWrap = false,
+    val cs = MiuixTheme.colorScheme
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        cornerRadius = pillRadius,
+        minWidth = 56.dp,
+        minHeight = height,
+        colors = if (filled) {
+            ButtonDefaults.buttonColors()
+        } else {
+            ButtonDefaults.buttonColors(
+                color = Color.Transparent,
+                disabledColor = Color.Transparent,
+                contentColor = cs.primary,
+                disabledContentColor = cs.primary.copy(alpha = 0.35f),
             )
-        }
-    } else {
-        TextButton(
-            text = text,
-            onClick = onClick,
-            modifier = modifier,
-            enabled = enabled,
-            cornerRadius = pillRadius,
-            minWidth = 48.dp,
-            minHeight = height,
-            insideMargin = PaddingValues(horizontal = horizontalPadding, vertical = 0.dp),
+        },
+        insideMargin = PaddingValues(horizontal = horizontalPadding, vertical = 0.dp),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
