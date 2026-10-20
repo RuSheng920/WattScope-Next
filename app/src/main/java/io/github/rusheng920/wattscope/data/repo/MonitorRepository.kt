@@ -167,6 +167,13 @@ class MonitorRepository(
     val glassPauseRecordingFlow: StateFlow<Boolean> = _glassPauseRecording.asStateFlow()
 
     /**
+     * 双电芯机型补偿：部分手机 BMS 只上报单路电池电流，整机功耗只有实际值的一半，
+     * 开启后把 aux 读到的整机功耗乘以 2。
+     */
+    private val _dualCellMode = MutableStateFlow(prefs.getBoolean("dual_cell_mode", false))
+    val dualCellModeFlow: StateFlow<Boolean> = _dualCellMode.asStateFlow()
+
+    /**
      * 首次安装引导是否完成。
      * 未完成时不探测 root、不启动 QPT 采样，避免应用一打开就弹授权框。
      */
@@ -191,6 +198,11 @@ class MonitorRepository(
     fun setGlassPauseRecording(paused: Boolean) {
         prefs.edit().putBoolean("glass_pause_recording", paused).apply()
         _glassPauseRecording.value = paused
+    }
+
+    fun setDualCellMode(enabled: Boolean) {
+        prefs.edit().putBoolean("dual_cell_mode", enabled).apply()
+        _dualCellMode.value = enabled
     }
 
     private fun loadThemeMode(): ThemeMode =
@@ -444,7 +456,9 @@ class MonitorRepository(
                 } else {
                     emptyList()
                 }
-                val aux = if (slow && lines.isNotEmpty()) auxReader.parseAuxLines(lines, wall) else null
+                val aux = if (slow && lines.isNotEmpty()) {
+                    auxReader.parseAuxLines(lines, wall, if (_dualCellMode.value) 2 else 1)
+                } else null
                 aux?.devicePowerUw?.let { devicePowerUw = it }
 
                 // FPS 走 SurfaceFlinger 呈现帧计数，1s 一次足够，成本远低于每 tick dumpsys
@@ -612,7 +626,9 @@ class MonitorRepository(
                     if (command.isNotBlank()) {
                         val lines = rootManager.execute(command)
                         val qptSamples = if (qptEnabled) qptReader.parseSampleLines(lines, wall, elapsed) else emptyList()
-                        val auxBatch = if (slow) auxReader.parseAuxLines(lines, wall) else null
+                        val auxBatch = if (slow) {
+                            auxReader.parseAuxLines(lines, wall, if (_dualCellMode.value) 2 else 1)
+                        } else null
                         auxBatch?.devicePowerUw?.let { lastDevicePowerUw = it }
 
                         // 批量落库：攒够 ~1s 再提交，把 WAL fsync 从每天 5 次/秒降到 1 次/秒

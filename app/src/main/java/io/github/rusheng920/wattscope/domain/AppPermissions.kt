@@ -21,4 +21,13 @@ data class AppPermissions(
 
     /** 是否所有核心权限就绪（首页不再提示）。 */
     val requiredReady: Boolean get() = root == true && overlay && notifications
+
+    /**
+     * 是否已知存在未授予的核心权限。
+     *
+     * [root] 为 null 表示「尚未检测」，不代表未授予；此时首页不应弹权限警告，
+     * 避免冷启动时 root 授权还在异步探测中，用户看到「权限未给全」的误报。
+     */
+    val hasKnownMissingRequiredPermission: Boolean
+        get() = root == false || !overlay || !notifications
 }

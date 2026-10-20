@@ -230,7 +230,11 @@ class AuxReader(private val rootManager: RootManager) {
             "\"\${c#cpu}\" \"\$v1\" \"\$v2\" \"\$v3\" \"\$v4\" \"\$v5\" \"\$v6\" \"\$v7\" \"\$v8\";; esac; " +
             "done < /proc/stat"
 
-    fun parseAuxLines(lines: List<String>, timestampMs: Long): AuxBatch {
+    /**
+     * @param dualCellMultiplier 双电芯机型补偿：部分 BMS 只上报单路电流，
+     *                           开启后把最终整机功耗乘以该系数（通常为 2）。
+     */
+    fun parseAuxLines(lines: List<String>, timestampMs: Long, dualCellMultiplier: Int = 1): AuxBatch {
         val freqs = mutableListOf<ClusterFreqSample>()
         val cpuTemps = mutableListOf<Long>()
         var ddrTemp: Long? = null
@@ -307,7 +311,7 @@ class AuxReader(private val rootManager: RootManager) {
         return AuxBatch(
             clusterFreqs = freqs,
             temps = temps,
-            devicePowerUw = devicePower,
+            devicePowerUw = devicePower?.let { it * dualCellMultiplier.coerceAtLeast(1) },
             coreUsages = parseCoreUsages(statLines, timestampMs),
             gpuFreqHz = gpuFreqHz,
             gpuUsagePercent = gpuUsagePercent,

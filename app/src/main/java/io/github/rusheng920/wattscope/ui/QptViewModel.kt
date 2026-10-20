@@ -50,6 +50,9 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     /** 首次安装引导是否完成。 */
     val onboardingDone: StateFlow<Boolean> = repository.onboardingDoneFlow
 
+    /** 双电芯机型补偿开关。 */
+    val dualCellMode: StateFlow<Boolean> = repository.dualCellModeFlow
+
     /** 悬浮窗开关状态（Compose 可观察，写入即响应）。 */
     val bubbleEnabled: StateFlow<Boolean> = repository.bubbleEnabledFlow
 
@@ -74,6 +77,7 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun setGlassBottomBar(enabled: Boolean) = repository.setGlassBottomBar(enabled)
     fun setGlassIntensity(intensity: GlassIntensity) = repository.setGlassIntensity(intensity)
     fun setGlassPauseRecording(paused: Boolean) = repository.setGlassPauseRecording(paused)
+    fun setDualCellMode(enabled: Boolean) = repository.setDualCellMode(enabled)
     fun refreshPermissions() = repository.refreshPermissions()
 
     /** 申请 root：授权成功后立即重扫设备能力，不需要重启应用。 */
