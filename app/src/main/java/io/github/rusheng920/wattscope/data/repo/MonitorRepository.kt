@@ -684,7 +684,7 @@ class MonitorRepository(
                         }
                     }
 
-                    // 悬浮窗自动停止：离开被记录应用即停（每 2s 检查一次，使用缓存的前台包名）
+                    // 悬浮窗自动停止：离开被记录应用即停（每 2s 检查一次）
                     if (autoStopOnAppExit && elapsed - lastAppCheckMs >= 2_000) {
                         lastAppCheckMs = elapsed
                         // 宽限期：开始记录后的前几秒内不做「已离开」判定。
