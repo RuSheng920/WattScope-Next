@@ -69,7 +69,7 @@ class QptMonitorService : Service() {
         super.onCreate()
         windowManager = getSystemService()!!
         createChannel()
-        startForeground(1, notification("悬浮窗运行中"))
+        startForeground(1, notification(getString(R.string.notif_overlay_running)))
         // 先显示气泡（若偏好开启），设备状态刷新并行进行
         if (Settings.canDrawOverlays(this) && repository.bubbleEnabled) {
             showBubble()
@@ -120,7 +120,7 @@ class QptMonitorService : Service() {
     private fun showOsd() {
         if (osdCard != null) return
         if (!Settings.canDrawOverlays(this)) {
-            toast("请先在权限中心授予悬浮窗权限")
+            toast(getString(R.string.toast_need_overlay))
             return
         }
         val density = resources.displayMetrics.density
@@ -325,11 +325,17 @@ class QptMonitorService : Service() {
         scope.launch {
             if (repository.state.value.isRecording) {
                 repository.stopRecording()
-                toast("停止记录")
+                toast(getString(R.string.action_stop_recording))
             } else {
                 // 悬浮球启动记录：记录当前应用，离开该应用时自动停止
                 val ok = repository.startRecording(autoStopOnAppExit = true)
-                toast(if (ok) "开始记录" else "无法开始记录：无可用监控源")
+                toast(
+                    if (ok) {
+                        getString(R.string.action_start_recording)
+                    } else {
+                        getString(R.string.toast_cannot_start)
+                    },
+                )
             }
         }
     }
@@ -348,7 +354,7 @@ class QptMonitorService : Service() {
         if (panel != null) return
         // 通知点开面板时若授权已被系统回收，直接 addView 会抛 SecurityException
         if (!Settings.canDrawOverlays(this)) {
-            toast("请先在权限中心授予悬浮窗权限")
+            toast(getString(R.string.toast_need_overlay))
             return
         }
         val density = resources.displayMetrics.density
@@ -371,7 +377,7 @@ class QptMonitorService : Service() {
 
         root.addView(
             TextView(this).apply {
-                text = "WattScope 控制"
+                text = getString(R.string.panel_title)
                 textSize = 16f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 setTextColor(0xFFF2F6FA.toInt())
@@ -379,7 +385,7 @@ class QptMonitorService : Service() {
             },
         )
         panelLiveText = TextView(this).apply {
-            text = "读取实时数据…"
+            text = getString(R.string.panel_reading)
             textSize = 12f
             setTextColor(0xFF7FD9A8.toInt())
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -395,13 +401,13 @@ class QptMonitorService : Service() {
             },
         )
 
-        panelQptText = panelRow(root, "QPT 总开关", density) {
+        panelQptText = panelRow(root, getString(R.string.settings_qpt_switch), density) {
             scope.launch {
                 repository.setQptEnabled(!repository.state.value.qptEnabled)
                 refreshPanelState()
             }
         }
-        panelBubbleText = panelRow(root, "悬浮球", density) {
+        panelBubbleText = panelRow(root, getString(R.string.settings_bubble), density) {
             val enabled = !repository.bubbleEnabled
             repository.bubbleEnabled = enabled
             startService(
@@ -410,7 +416,7 @@ class QptMonitorService : Service() {
             )
             refreshPanelState()
         }
-        panelOsdText = panelRow(root, "OSD 浮层", density) {
+        panelOsdText = panelRow(root, getString(R.string.panel_osd), density) {
             repository.osdEnabled = !repository.osdEnabled
             if (repository.osdEnabled) showOsd() else hideOsd()
             refreshPanelState()
@@ -418,7 +424,7 @@ class QptMonitorService : Service() {
 
         root.addView(
             TextView(this).apply {
-                text = "关闭面板"
+                text = getString(R.string.panel_close)
                 textSize = 13.5f
                 gravity = Gravity.CENTER
                 setTextColor(0xFFCAD6E1.toInt())
@@ -490,21 +496,25 @@ class QptMonitorService : Service() {
     }
 
     private fun renderLiveLine(sample: OsdSample?, recording: Boolean): String {
-        val prefix = if (recording) "● REC" else "○ 待机"
+        val prefix = if (recording) "● REC" else getString(R.string.panel_idle)
         val soc = sample?.socPowerUw?.let { "%.2f W".format(it / 1_000_000.0) }
         val fps = sample?.fps?.let { "%.0f fps".format(it) }
         val parts = listOfNotNull(soc, fps)
-        return if (parts.isEmpty()) "$prefix · 等待数据" else "$prefix · ${parts.joinToString(" · ")}"
+        return if (parts.isEmpty()) {
+            getString(R.string.panel_waiting_fmt, prefix)
+        } else {
+            "$prefix · ${parts.joinToString(" · ")}"
+        }
     }
 
     private fun refreshPanelState() {
-        qptStatus(panelQptText, "QPT 总开关", repository.state.value.qptEnabled)
-        qptStatus(panelBubbleText, "悬浮球", repository.bubbleEnabled)
-        qptStatus(panelOsdText, "OSD 浮层", repository.osdEnabled)
+        qptStatus(panelQptText, getString(R.string.settings_qpt_switch), repository.state.value.qptEnabled)
+        qptStatus(panelBubbleText, getString(R.string.settings_bubble), repository.bubbleEnabled)
+        qptStatus(panelOsdText, getString(R.string.panel_osd), repository.osdEnabled)
     }
 
     private fun qptStatus(view: TextView?, title: String, on: Boolean) {
-        view?.text = "$title  ${if (on) "已开启" else "已关闭"}"
+        view?.text = "$title  ${getString(if (on) R.string.state_on else R.string.state_off)}"
     }
 
     // ---------- 背景与触摸 ----------
@@ -693,7 +703,7 @@ class QptMonitorService : Service() {
 
     private fun createChannel() {
         getSystemService<NotificationManager>()?.createNotificationChannel(
-            NotificationChannel(ChannelId, "QPT 功耗监控", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(ChannelId, getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_LOW),
         )
     }
 

@@ -51,3 +51,7 @@ Any of 11, opt-in:
 Per-frame Gaussian blur keeps the GPU busy — which is exactly what pollutes the power you are measuring. Both overlays therefore use a static liquid-glass layer (translucency + 1 dp rim + inner highlight). Only the in-app nav bar uses Backdrop's live blur, because at that moment you are not measuring.
 
 The same reasoning drives "reduce nav bar effects while recording", on by default.
+
+## Troubleshooting
+
+If the ball never appears, check the overlay grant first: [Permissions & troubleshooting](/en/guide/permissions).

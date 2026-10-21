@@ -127,12 +127,16 @@ class MainActivity : ComponentActivity() {
                     val content = if (asJson) repository.exportRecordJson(recordId) else repository.exportRecordCsv(recordId)
                     contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(content.toByteArray())
-                    } ?: error("无法打开输出流")
+                    } ?: error(getString(R.string.error_open_output))
                 }
             }
             Toast.makeText(
                 this@MainActivity,
-                if (result.isSuccess) "导出成功" else "导出失败：${result.exceptionOrNull()?.message}",
+                if (result.isSuccess) {
+                    getString(R.string.toast_export_success)
+                } else {
+                    getString(R.string.toast_export_failed_fmt, result.exceptionOrNull()?.message.orEmpty())
+                },
                 Toast.LENGTH_SHORT,
             ).show()
         }

@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  English (en). Default locale is Chinese (res/values/), so any language without
+  its own values-* folder falls back to Chinese. Keep the key set identical to
+  res/values/strings.xml and keep %1$s / %1$d placeholders in the same order.
+-->
+<resources>
+    <string name="app_name">WattScope Next</string>
+
+    <!-- ========== Common ========== -->
+    <string name="action_back">Back</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_done">Done</string>
+    <string name="action_sort">Sort</string>
+    <string name="action_recheck">Re-check</string>
+    <string name="action_request">Request</string>
+    <string name="action_grant">Grant</string>
+    <string name="action_open_settings">Settings</string>
+    <string name="action_turn_on">Turn on</string>
+    <string name="action_enable">Enable</string>
+    <string name="action_later">Set up later</string>
+    <string name="action_finish">Finish and enter</string>
+    <string name="action_toggle_theme">Toggle theme</string>
+    <string name="action_start_recording">Start recording</string>
+    <string name="action_stop_recording">Stop recording</string>
+
+    <!-- List separator: ideographic comma in Chinese, comma in English -->
+    <string name="list_separator">, </string>
+
+    <!-- ========== State words ========== -->
+    <string name="state_granted">Granted</string>
+    <string name="state_not_granted">Not granted</string>
+    <string name="state_undetected">Unknown</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+    <string name="state_added">Added</string>
+    <string name="state_restricted">Restricted</string>
+    <string name="state_allowed">Allowed</string>
+    <string name="state_optional">Optional</string>
+    <string name="state_suggest_on">Recommended</string>
+    <string name="state_enabled">Enabled</string>
+    <string name="state_in_use">In use</string>
+    <string name="state_ready">Ready</string>
+    <string name="state_pending_auth">Pending</string>
+    <string name="state_recording">Recording</string>
+    <string name="state_idle">Idle</string>
+    <string name="state_unavailable">N/A</string>
+    <string name="state_waiting">Waiting for data</string>
+
+    <!-- ========== Navigation ========== -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_history">Records</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- ========== Dashboard ========== -->
+    <string name="dash_perm_missing_fmt">%1$d permission(s) still missing</string>
+    <string name="dash_perm_hint">Root / overlay / notifications — tap to grant</string>
+    <string name="dash_stat_zones">Zones</string>
+    <string name="dash_stat_device_power">Device power</string>
+    <string name="dash_live_power">Live power</string>
+    <string name="dash_peak_fmt">Peak %1$s</string>
+    <string name="dash_qpt_hint">Enable QPT to see per-zone power bars</string>
+    <string name="dash_zones_title">Power zones</string>
+    <string name="dash_zones_empty_title">No zone data yet</string>
+    <string name="dash_zones_empty_desc">Enable QPT or start recording to see live power per zone here.</string>
+    <string name="dash_zones_found_fmt">%1$d zones detected: %2$s</string>
+    <string name="hero_soc_power">Live SOC power</string>
+
+    <!-- ========== Charts ========== -->
+    <string name="chart_samples_fmt">%1$d samples</string>
+    <string name="chart_samples_total_fmt">%1$d samples in total</string>
+    <string name="chart_avg_fmt">%1$s avg %2$s</string>
+    <string name="chart_time_fmt">Time %1$.2f s</string>
+    <string name="chart_fps">FPS</string>
+    <string name="chart_soc_power">SOC power</string>
+    <string name="chart_device_power">Device power</string>
+    <string name="chart_cluster_freq">CPU cluster frequency</string>
+    <string name="chart_core_usage">CPU core usage</string>
+    <string name="chart_gpu_freq_usage">GPU frequency/usage</string>
+    <string name="chart_gpu_freq_and_usage">GPU frequency &amp; usage</string>
+    <string name="chart_gpu_freq">GPU frequency</string>
+    <string name="chart_ddr_freq">DDR frequency</string>
+    <string name="chart_zone_power">Zone power</string>
+    <string name="chart_temperature">Temperature</string>
+    <string name="chart_freq">Frequency</string>
+    <string name="chart_usage">Usage</string>
+    <string name="chart_sort_hint">Applies to all records</string>
+
+    <!-- ========== History ========== -->
+    <string name="history_count_fmt">%1$d record(s)</string>
+    <string name="history_empty_title">No records yet</string>
+    <string name="history_empty_desc">Tap Start recording on the dashboard, or tap the floating ball to record the current app; recording stops when you leave that app.</string>
+    <string name="history_fps_fmt">FPS %1$s</string>
+    <string name="duration_fmt">%1$dm %2$ds</string>
+
+    <!-- ========== Settings ========== -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_language">Language / 语言</string>
+    <string name="settings_language_desc">Follows the system by default; switching rebuilds the UI immediately, sampling is unaffected</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_desc">Dark mode is easier on the eyes and saves power at night</string>
+    <string name="settings_glass_bar">Floating glass bar</string>
+    <string name="settings_glass_bar_desc">Low tint + edge refraction: content shows through and bends slightly at the rim</string>
+    <string name="settings_glass_intensity">Glass intensity</string>
+    <string name="settings_glass_intensity_desc">The three levels only change blur radius and refraction strength; the surface tint stays light — higher values look thicker and refract more.</string>
+    <string name="settings_glass_pause">Pause live blur while recording</string>
+    <string name="settings_glass_pause_desc">Live blur keeps the GPU busy; when enabled it degrades to static glass during recording so power readings stay clean</string>
+    <string name="settings_section_sampling">Sampling</string>
+    <string name="settings_qpt_switch">QPT master switch</string>
+    <string name="settings_qpt_on_desc">Reads every power zone while on</string>
+    <string name="settings_qpt_off_desc">Sampling stops while off</string>
+    <string name="settings_interval">Sampling interval</string>
+    <string name="settings_interval_desc">Shorter intervals give finer data but cost more power and storage; 200 ms is recommended.</string>
+    <string name="settings_dual_cell">Dual-cell device</string>
+    <string name="settings_dual_cell_desc">Some dual-cell phones report only one current rail; enable this to double the device power reading</string>
+    <string name="settings_section_overlay">Overlays</string>
+    <string name="settings_bubble">Floating ball</string>
+    <string name="settings_bubble_desc">Tap to record / long-press for controls / drag to an edge to snap</string>
+    <string name="settings_bubble_size">Ball size</string>
+    <string name="settings_bubble_size_desc">Mini takes the least space; changes apply instantly without restarting the service</string>
+    <string name="settings_bubble_snap">Snap to edge on release</string>
+    <string name="settings_bubble_snap_desc">When on, releasing a drag sticks the ball to the left or right edge; when off it stays wherever you drop it</string>
+    <string name="settings_osd">OSD live overlay</string>
+    <string name="settings_osd_desc">Two-column HUD: draggable, tap to cycle opacity, never written to records</string>
+    <string name="settings_osd_metrics">OSD metrics</string>
+    <string name="settings_osd_metrics_desc">%1$d / %2$d selected, tap to toggle; tap the panel to cycle opacity</string>
+    <string name="settings_section_fps">FPS source</string>
+    <string name="settings_fps_auto">Follow foreground app</string>
+    <string name="settings_fps_auto_desc">Prefers SurfaceView layers, falls back to gfxinfo</string>
+    <string name="settings_scan_layers">Scan SurfaceFlinger layers</string>
+    <string name="settings_rescan_layers">Rescan layers</string>
+    <string name="settings_fps_manual_fmt">Manual layer (%1$d)</string>
+    <string name="settings_fps_none">No layers found: make sure root is granted; a game must be in the foreground when scanning for its SurfaceView layer to appear.</string>
+    <string name="settings_section_service">Service &amp; keep-alive</string>
+    <string name="settings_permission_center">Permission center</string>
+    <string name="settings_perm_ready_fmt">%1$d / %2$d core permissions ready</string>
+    <string name="settings_restart_service">Restart foreground service</string>
+    <string name="settings_restart_service_desc">Restore it manually if the system cleared its notification</string>
+    <string name="settings_battery">Battery optimization whitelist</string>
+    <string name="settings_battery_added">Whitelisted</string>
+    <string name="settings_battery_desc">Prevents sampling from freezing once the screen turns off</string>
+    <string name="settings_miui_autostart">MIUI autostart</string>
+    <string name="settings_miui_autostart_desc">Allowing autostart is recommended on HyperOS</string>
+    <string name="about_version_fmt">Version %1$s · Qualcomm QPT power telemetry</string>
+    <string name="about_github">GitHub repository</string>
+
+    <!-- ========== Record detail ========== -->
+    <string name="detail_title">Record detail</string>
+    <string name="detail_section_charts">Charts</string>
+    <string name="detail_section_filter">Zone filter</string>
+    <string name="detail_zone_avg_fmt">Avg %1$s</string>
+    <string name="detail_section_avg_power">Average power</string>
+    <string name="detail_device">Device</string>
+    <string name="detail_soc_max">SOC max</string>
+    <string name="detail_soc_avg">SOC avg</string>
+    <string name="detail_soc_min">SOC min</string>
+    <string name="detail_samples">Samples</string>
+    <string name="detail_avg_fps">Average FPS</string>
+
+    <!-- ========== Permission center / onboarding ========== -->
+    <string name="perm_intro">Grant states refresh live; anything missing can be granted here at any time.</string>
+    <string name="perm_title">Permission center</string>
+    <string name="perm_section_core">Core permissions</string>
+    <string name="perm_root">Root access</string>
+    <string name="perm_root_granted">Superuser access granted; QPT power nodes can be read</string>
+    <string name="perm_root_denied">Not granted: power sampling is unavailable. Allow this app in KernelSU / Magisk</string>
+    <string name="perm_root_unknown">Grant state not detected yet; tap the button to request it</string>
+    <string name="perm_overlay">Display over other apps</string>
+    <string name="perm_overlay_desc">The floating ball and OSD overlay must be drawn on top of other apps</string>
+    <string name="perm_notification">Notifications</string>
+    <string name="perm_notification_desc">The foreground service needs a persistent notification for keep-alive and quick controls</string>
+    <string name="perm_section_background">Background &amp; detection</string>
+    <string name="perm_battery">Battery optimization whitelist</string>
+    <string name="perm_battery_desc">Keeps the system from freezing sampling and recording when the screen is off</string>
+    <string name="perm_usage">Usage access</string>
+    <string name="perm_usage_desc">Identifies the foreground app: FPS following and auto-stop on app exit depend on it</string>
+    <string name="perm_autostart">Autostart</string>
+    <string name="perm_autostart_desc">MIUI/HyperOS kills background processes; allowing autostart is recommended</string>
+    <string name="perm_auto_note">This page re-checks grant states every 1.5 s; root changes take effect as soon as they are granted, no restart needed.</string>
+    <string name="perm_section_first_run">First run</string>
+    <string name="perm_step1_title">Grant root access</string>
+    <string name="perm_step1_desc">Allow this app in the KernelSU / Magisk prompt</string>
+    <string name="perm_step2_title">Enable overlays and notifications</string>
+    <string name="perm_step2_desc">The floating ball, OSD overlay and foreground service depend on both</string>
+    <string name="perm_step3_title">Go back to the dashboard and record</string>
+    <string name="perm_step3_desc">You can also tap the floating ball; recording stops when you leave the app</string>
+    <string name="perm_progress_ready">Permissions ready</string>
+    <string name="perm_progress_left_fmt">%1$d permission(s) to go</string>
+    <string name="perm_progress_ready_desc">All core features are available</string>
+    <string name="perm_progress_left_desc">Core: root, overlay, notifications</string>
+    <string name="onboarding_desc">Real-time Qualcomm QPT power telemetry. Grant the essentials first; you can adjust them later in Settings → Permission center.</string>
+
+    <!-- ========== Service & overlays ========== -->
+    <string name="notif_channel_name">QPT power monitoring</string>
+    <string name="notif_overlay_running">Overlay running</string>
+    <string name="toast_need_overlay">Grant overlay permission in Permission center first</string>
+    <string name="toast_cannot_start">Cannot start recording: no monitoring source</string>
+    <string name="panel_title">WattScope Controls</string>
+    <string name="panel_reading">Reading live data…</string>
+    <string name="panel_osd">OSD overlay</string>
+    <string name="panel_close">Close panel</string>
+    <string name="panel_idle">○ Idle</string>
+    <string name="panel_waiting_fmt">%1$s · waiting for data</string>
+
+    <!-- ========== Export ========== -->
+    <string name="toast_export_success">Export complete</string>
+    <string name="toast_export_failed_fmt">Export failed: %1$s</string>
+    <string name="error_open_output">Cannot open the output file</string>
+
+    <!-- ========== Enum labels ========== -->
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="glass_light">Light</string>
+    <string name="glass_standard">Standard</string>
+    <string name="glass_strong">Heavy</string>
+    <string name="bubble_mini">Mini</string>
+    <string name="bubble_standard">Standard</string>
+    <string name="bubble_large">Large</string>
+    <string name="interval_100">100 ms</string>
+    <string name="interval_200">200 ms</string>
+    <string name="interval_500">500 ms</string>
+    <string name="interval_1000">1000 ms</string>
+    <string name="osd_metric_soc_power">SOC</string>
+    <string name="osd_metric_cpu_l">CPU-L</string>
+    <string name="osd_metric_cpu_m">CPU-M</string>
+    <string name="osd_metric_gpu">GPU</string>
+    <string name="osd_metric_fps">FPS</string>
+    <string name="osd_metric_gpu_freq">GPU freq</string>
+    <string name="osd_metric_cpu_temp">CPU temp</string>
+    <string name="osd_metric_gpu_temp">GPU temp</string>
+    <string name="osd_metric_ddr_temp">DDR temp</string>
+    <string name="osd_metric_gpu_usage">GPU usage</string>
+    <string name="osd_metric_device">Device</string>
+    <string name="lang_system">System</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_en">English</string>
+
+    <!-- ========== Runtime status ========== -->
+    <string name="status_checking_qpt">Checking QPT</string>
+    <string name="status_root_skipped">Root not granted; some features are unavailable</string>
+    <string name="status_need_permissions">Finish permission setup first</string>
+    <string name="status_root_failed">Root failed; check the KernelSU grant</string>
+    <string name="status_qpt_on_fmt">QPT on, %1$d power zones found</string>
+    <string name="status_qpt_off">QPT off</string>
+    <string name="status_no_qpt">No QPT support; only frequency/temperature are recorded</string>
+    <string name="status_write_enabled_failed">Failed to write the enabled node; check the KernelSU grant</string>
+    <string name="status_need_source">Enable QPT or check the monitoring sources</string>
+    <string name="status_no_source">No usable monitoring source</string>
+    <string name="status_recording_fmt">Recording: %1$s</string>
+    <string name="status_recording_no_qpt_fmt">Recording (no QPT): %1$s</string>
+    <string name="status_saved">Record saved</string>
+</resources>

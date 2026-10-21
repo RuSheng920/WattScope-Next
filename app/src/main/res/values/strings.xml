@@ -1,3 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认语言（中文）。英文见 res/values-en/strings.xml。
+  新增文案时两份必须同步新增同名 key，否则英文环境会回退到中文。
+-->
 <resources>
     <string name="app_name">WattScope Next</string>
+
+    <!-- ========== 通用 ========== -->
+    <string name="action_back">返回</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_delete">删除</string>
+    <string name="action_clear">清空</string>
+    <string name="action_done">完成</string>
+    <string name="action_sort">排序</string>
+    <string name="action_recheck">重新检测</string>
+    <string name="action_request">申请授权</string>
+    <string name="action_grant">去授权</string>
+    <string name="action_open_settings">去设置</string>
+    <string name="action_turn_on">去开启</string>
+    <string name="action_enable">启用</string>
+    <string name="action_later">稍后设置</string>
+    <string name="action_finish">完成，进入应用</string>
+    <string name="action_toggle_theme">切换主题</string>
+    <string name="action_start_recording">开始记录</string>
+    <string name="action_stop_recording">停止记录</string>
+
+    <!-- 列表连接符：中文用顿号，英文用逗号 -->
+    <string name="list_separator">、</string>
+
+    <!-- ========== 状态词 ========== -->
+    <string name="state_granted">已授予</string>
+    <string name="state_not_granted">未授予</string>
+    <string name="state_undetected">未检测</string>
+    <string name="state_on">已开启</string>
+    <string name="state_off">已关闭</string>
+    <string name="state_added">已加入</string>
+    <string name="state_restricted">受限制</string>
+    <string name="state_allowed">已允许</string>
+    <string name="state_optional">可选</string>
+    <string name="state_suggest_on">建议开启</string>
+    <string name="state_enabled">已启用</string>
+    <string name="state_in_use">使用中</string>
+    <string name="state_ready">已就绪</string>
+    <string name="state_pending_auth">待授权</string>
+    <string name="state_recording">录制中</string>
+    <string name="state_idle">待机</string>
+    <string name="state_unavailable">不可用</string>
+    <string name="state_waiting">等待数据</string>
+
+    <!-- ========== 导航 ========== -->
+    <string name="nav_dashboard">仪表盘</string>
+    <string name="nav_history">记录</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- ========== 仪表盘 ========== -->
+    <string name="dash_perm_missing_fmt">还有 %1$d 项权限未授予</string>
+    <string name="dash_perm_hint">Root / 悬浮窗 / 通知，点击前往授权</string>
+    <string name="dash_stat_zones">分区数</string>
+    <string name="dash_stat_device_power">整机功耗</string>
+    <string name="dash_live_power">实时功耗</string>
+    <string name="dash_peak_fmt">峰值 %1$s</string>
+    <string name="dash_qpt_hint">开启 QPT 后显示各分区功耗柱状图</string>
+    <string name="dash_zones_title">功耗分区</string>
+    <string name="dash_zones_empty_title">还没有分区数据</string>
+    <string name="dash_zones_empty_desc">开启 QPT 或开始记录后，这里会按分区显示实时功耗。</string>
+    <string name="dash_zones_found_fmt">已识别 %1$d 个监控项：%2$s</string>
+    <string name="hero_soc_power">SOC 实时功耗</string>
+
+    <!-- ========== 图表 ========== -->
+    <string name="chart_samples_fmt">%1$d 个采样点</string>    <string name="chart_samples_total_fmt">共 %1$d 个采样点</string>
+    <string name="chart_avg_fmt">%1$s 均值 %2$s</string>
+    <string name="chart_time_fmt">时间 %1$.2f 秒</string>
+    <string name="chart_fps">FPS</string>
+    <string name="chart_soc_power">SOC 功率</string>
+    <string name="chart_device_power">整机功耗</string>
+    <string name="chart_cluster_freq">CPU 簇频率</string>
+    <string name="chart_core_usage">CPU 核心占用</string>
+    <string name="chart_gpu_freq_usage">GPU 频率/占用</string>
+    <string name="chart_gpu_freq_and_usage">GPU 频率与占用</string>
+    <string name="chart_gpu_freq">GPU 频率</string>
+    <string name="chart_ddr_freq">DDR 频率</string>
+    <string name="chart_zone_power">分区功率</string>
+    <string name="chart_temperature">温度</string>
+    <string name="chart_freq">频率</string>
+    <string name="chart_usage">占用</string>
+    <string name="chart_sort_hint">排序对所有记录生效</string>
+
+    <!-- ========== 历史 ========== -->
+    <string name="history_count_fmt">共 %1$d 条记录</string>
+    <string name="history_empty_title">还没有记录</string>
+    <string name="history_empty_desc">点击仪表盘的「开始记录」，或单击悬浮球记录当前应用；退出应用时会自动停止。</string>
+    <string name="history_fps_fmt">帧率 %1$s</string>
+    <string name="duration_fmt">%1$d 分 %2$d 秒</string>
+
+    <!-- ========== 设置 ========== -->
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_language">语言 / Language</string>
+    <string name="settings_language_desc">默认跟随系统；切换后界面立即重建，采样不受影响</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_desc">深色模式在夜间更省电、更易读</string>
+    <string name="settings_glass_bar">悬浮玻璃底栏</string>
+    <string name="settings_glass_bar_desc">低着色 + 边缘折射：内容从玻璃下方透出并被轻微弯曲</string>
+    <string name="settings_glass_intensity">液态玻璃浓度</string>
+    <string name="settings_glass_intensity_desc">三档只调整模糊半径与折射强度，表面着色始终很淡 —— 数值越大，玻璃越「厚」、边缘折射越明显。</string>
+    <string name="settings_glass_pause">记录时暂停实时模糊</string>
+    <string name="settings_glass_pause_desc">实时模糊需要持续占用 GPU，开启后记录期间自动降级为静态玻璃，避免污染功耗数据</string>
+    <string name="settings_section_sampling">采样</string>
+    <string name="settings_qpt_switch">QPT 总开关</string>
+    <string name="settings_qpt_on_desc">开启后读取各功耗分区</string>
+    <string name="settings_qpt_off_desc">关闭后停止采样</string>
+    <string name="settings_interval">采样间隔</string>
+    <string name="settings_interval_desc">间隔越短数据越细，功耗与存储开销也越高；建议 200 毫秒。</string>
+    <string name="settings_dual_cell">双电芯机型</string>
+    <string name="settings_dual_cell_desc">部分双电芯手机 BMS 只上报单路电流，开启后整机功耗按双倍计算</string>
+    <string name="settings_section_overlay">悬浮窗</string>
+    <string name="settings_bubble">悬浮球</string>
+    <string name="settings_bubble_desc">单击记录 / 长按控制面板 / 拖到边缘自动吸附</string>
+    <string name="settings_bubble_size">悬浮球大小</string>
+    <string name="settings_bubble_size_desc">迷你档遮挡面积最小；改动立即生效，不需要重启服务</string>
+    <string name="settings_bubble_snap">松手吸附边缘</string>
+    <string name="settings_bubble_snap_desc">开启后拖动松手会自动贴到屏幕左右边缘；关闭则停留在松手位置</string>
+    <string name="settings_osd">OSD 实时浮层</string>
+    <string name="settings_osd_desc">两列 HUD，可拖动、轻点切换透明度、不写入记录</string>
+    <string name="settings_osd_metrics">OSD 显示项</string>
+    <string name="settings_osd_metrics_desc">已选 %1$d / %2$d 项，轻点切换；面板上轻点可循环透明度</string>
+    <string name="settings_section_fps">FPS 数据源</string>
+    <string name="settings_fps_auto">自动跟随前台应用</string>
+    <string name="settings_fps_auto_desc">优先 SurfaceView 图层，失败回退 gfxinfo</string>
+    <string name="settings_scan_layers">扫描 SurfaceFlinger 图层</string>
+    <string name="settings_rescan_layers">重新扫描图层</string>
+    <string name="settings_fps_manual_fmt">手动指定图层（%1$d）</string>
+    <string name="settings_fps_none">未扫描到图层：确认已授予 root；游戏需在前台运行时扫描才能看到其 SurfaceView 层。</string>
+    <string name="settings_section_service">服务与保活</string>
+    <string name="settings_permission_center">权限中心</string>
+    <string name="settings_perm_ready_fmt">%1$d / %2$d 项核心权限已就绪</string>
+    <string name="settings_restart_service">重启前台服务</string>
+    <string name="settings_restart_service_desc">通知被系统清理后可手动恢复</string>
+    <string name="settings_battery">电池优化白名单</string>
+    <string name="settings_battery_added">已加入白名单</string>
+    <string name="settings_battery_desc">避免息屏后停止采样</string>
+    <string name="settings_miui_autostart">MIUI 自启动管理</string>
+    <string name="settings_miui_autostart_desc">HyperOS 建议允许自启动</string>
+    <string name="about_version_fmt">版本 %1$s · 高通 QPT 功耗遥测</string>
+    <string name="about_github">GitHub 项目主页</string>
+
+    <!-- ========== 详情页 ========== -->
+    <string name="detail_title">记录详情</string>
+    <string name="detail_section_charts">曲线</string>
+    <string name="detail_section_filter">分区筛选</string>
+    <string name="detail_zone_avg_fmt">均值 %1$s</string>
+    <string name="detail_section_avg_power">平均功耗</string>
+    <string name="detail_device">整机</string>
+    <string name="detail_soc_max">SOC 最高</string>
+    <string name="detail_soc_avg">SOC 均值</string>
+    <string name="detail_soc_min">SOC 最低</string>
+    <string name="detail_samples">采样点</string>
+    <string name="detail_avg_fps">平均帧率</string>
+
+    <!-- ========== 权限中心 / 引导 ========== -->
+    <string name="perm_intro">授权状态会实时刷新；未授予的权限可随时在这里补齐。</string>
+    <string name="perm_title">权限中心</string>
+    <string name="perm_section_core">核心权限</string>
+    <string name="perm_root">Root 权限</string>
+    <string name="perm_root_granted">已获得超级用户授权，可以读取 QPT 功耗节点</string>
+    <string name="perm_root_denied">未获得授权：功耗采样不可用，请在 KernelSU / Magisk 中允许本应用</string>
+    <string name="perm_root_unknown">尚未检测到授权状态，点击右侧按钮发起申请</string>
+    <string name="perm_overlay">悬浮窗权限</string>
+    <string name="perm_overlay_desc">悬浮球与 OSD 实时功耗浮层需要显示在其他应用上层</string>
+    <string name="perm_notification">通知权限</string>
+    <string name="perm_notification_desc">前台服务需要常驻通知，用于保活与快捷控制</string>
+    <string name="perm_section_background">后台与识别</string>
+    <string name="perm_battery">电池优化白名单</string>
+    <string name="perm_battery_desc">避免系统在息屏后冻结采样与记录</string>
+    <string name="perm_usage">使用情况访问</string>
+    <string name="perm_usage_desc">用于识别前台应用：FPS 跟随与「退出应用自动停止记录」依赖它</string>
+    <string name="perm_autostart">自启动管理</string>
+    <string name="perm_autostart_desc">MIUI/HyperOS 会清理后台进程，建议允许自启动</string>
+    <string name="perm_auto_note">本页每 1.5 秒自动检测一次授权状态；Root 授权变化会在授权完成后立即生效，无需重启应用。</string>
+    <string name="perm_section_first_run">首次使用</string>
+    <string name="perm_step1_title">授予 Root 权限</string>
+    <string name="perm_step1_desc">在 KernelSU / Magisk 弹窗中允许本应用</string>
+    <string name="perm_step2_title">开启悬浮窗与通知</string>
+    <string name="perm_step2_desc">悬浮球、OSD 浮层和前台服务依赖这两项</string>
+    <string name="perm_step3_title">回到仪表盘开始记录</string>
+    <string name="perm_step3_desc">也可以单击悬浮球，退出被记录应用时自动停止</string>
+    <string name="perm_progress_ready">权限已就绪</string>
+    <string name="perm_progress_left_fmt">还需完成 %1$d 项授权</string>
+    <string name="perm_progress_ready_desc">所有核心功能均可正常使用</string>
+    <string name="perm_progress_left_desc">核心权限：Root、悬浮窗、通知</string>
+    <string name="onboarding_desc">高通 QPT 实时功耗遥测。开始前先完成必要的授权，之后可在「设置 → 权限中心」随时调整。</string>
+
+    <!-- ========== 服务与浮层 ========== -->
+    <string name="notif_channel_name">QPT 功耗监控</string>
+    <string name="notif_overlay_running">悬浮窗运行中</string>
+    <string name="toast_need_overlay">请先在权限中心授予悬浮窗权限</string>
+    <string name="toast_cannot_start">无法开始记录：无可用监控源</string>
+    <string name="panel_title">WattScope 控制</string>
+    <string name="panel_reading">读取实时数据…</string>
+    <string name="panel_osd">OSD 浮层</string>
+    <string name="panel_close">关闭面板</string>
+    <string name="panel_idle">○ 待机</string>
+    <string name="panel_waiting_fmt">%1$s · 等待数据</string>
+
+    <!-- ========== 导出 ========== -->
+    <string name="toast_export_success">导出成功</string>
+    <string name="toast_export_failed_fmt">导出失败：%1$s</string>
+    <string name="error_open_output">无法打开输出文件</string>
+
+    <!-- ========== 枚举标签 ========== -->
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="glass_light">轻盈</string>
+    <string name="glass_standard">标准</string>
+    <string name="glass_strong">浓郁</string>
+    <string name="bubble_mini">迷你</string>
+    <string name="bubble_standard">标准</string>
+    <string name="bubble_large">大</string>
+    <string name="interval_100">100 毫秒</string>
+    <string name="interval_200">200 毫秒</string>
+    <string name="interval_500">500 毫秒</string>
+    <string name="interval_1000">1000 毫秒</string>
+    <string name="osd_metric_soc_power">SOC</string>
+    <string name="osd_metric_cpu_l">CPU-L</string>
+    <string name="osd_metric_cpu_m">CPU-M</string>
+    <string name="osd_metric_gpu">GPU</string>
+    <string name="osd_metric_fps">FPS</string>
+    <string name="osd_metric_gpu_freq">GPU频率</string>
+    <string name="osd_metric_cpu_temp">CPU温度</string>
+    <string name="osd_metric_gpu_temp">GPU温度</string>
+    <string name="osd_metric_ddr_temp">DDR温度</string>
+    <string name="osd_metric_gpu_usage">GPU占用</string>
+    <string name="osd_metric_device">整机</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_en">English</string>
+
+    <!-- ========== 运行时状态 ========== -->
+    <string name="status_checking_qpt">正在检查 QPT</string>
+    <string name="status_root_skipped">尚未授予 Root，部分功能不可用</string>
+    <string name="status_need_permissions">请先完成权限设置</string>
+    <string name="status_root_failed">Root 失败，请检查 KernelSU 授权</string>
+    <string name="status_qpt_on_fmt">QPT 已开启，发现 %1$d 个功耗分区</string>
+    <string name="status_qpt_off">QPT 已关闭</string>
+    <string name="status_no_qpt">无 QPT 支持，仅记录频率/温度等数据</string>
+    <string name="status_write_enabled_failed">写入 enabled 失败，请检查 KernelSU 授权</string>
+    <string name="status_need_source">请开启 QPT 或检查监控源</string>
+    <string name="status_no_source">无可用监控数据源</string>
+    <string name="status_recording_fmt">记录中：%1$s</string>
+    <string name="status_recording_no_qpt_fmt">记录中（无 QPT）：%1$s</string>
+    <string name="status_saved">记录已保存</string>
 </resources>

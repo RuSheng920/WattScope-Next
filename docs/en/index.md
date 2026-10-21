@@ -32,6 +32,8 @@ features:
     details: Synchronised crosshair across every chart, floating tooltip, per-chart averages, zone filtering, reorderable charts, JSON / CSV export.
   - title: Native MIUIX design
     details: Built on the MIUIX component library — dark / light / system themes, floating liquid-glass navigation bar, predictive back.
+  - title: Chinese & English
+    details: The UI ships in both languages. It follows the system by default and can be pinned in Settings (Android 13+ per-app language); switching applies instantly.
 ---
 
 <TelemetryPanel locale="en" />

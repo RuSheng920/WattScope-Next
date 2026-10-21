@@ -64,3 +64,7 @@ See [Floating ball & OSD](/en/guide/overlay).
 ### About
 
 Shows the version and links to this repository. The permission centre entry lives here too, with a "ready" status pill.
+
+### Language
+
+The UI ships in Chinese and English. By default it follows the system language; Settings → Appearance lets you pin either one (Android 13+ per-app language), and the switch takes effect immediately without touching sampling.

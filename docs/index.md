@@ -32,6 +32,8 @@ features:
     details: 全局同步十字光标与浮动 Tooltip，每图独立平均值，分区筛选，曲线顺序可自定义，支持 JSON / CSV 导出。
   - title: 原生 MIUIX 设计
     details: 基于 MIUIX 设计语言组件库构建，深色 / 浅色 / 跟随系统三态主题，悬浮液态玻璃底栏与预测性返回。
+  - title: 中英双语
+    details: 界面提供简体中文与英文，默认跟随系统语言，也可在设置内固定（Android 13+ 系统级 per-app language），切换即时生效。
 ---
 
 <TelemetryPanel />

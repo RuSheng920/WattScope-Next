@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.OsdSample
 import kotlin.math.roundToInt
@@ -49,7 +50,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         includeFontPadding = false
     }
     private val emptyText = TextView(context).apply {
-        text = "等待数据…"
+        text = context.getString(R.string.state_waiting)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
         setTextColor(Color.argb(0xCC, 0x2A, 0x32, 0x3E))
         includeFontPadding = false
@@ -124,7 +125,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
             }
             row.addView(
                 TextView(context).apply {
-                    text = metric.label
+                    text = context.getString(metric.labelRes)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                     setTextColor(inkMuted)
                     letterSpacing = 0.02f

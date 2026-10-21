@@ -145,6 +145,7 @@ export default defineConfig({
               items: [
                 { text: 'Features', link: '/en/guide/features' },
                 { text: 'Floating Ball & OSD', link: '/en/guide/overlay' },
+                { text: 'Permissions & Troubleshooting', link: '/en/guide/permissions' },
                 { text: 'FAQ', link: '/en/guide/faq' },
               ],
             },

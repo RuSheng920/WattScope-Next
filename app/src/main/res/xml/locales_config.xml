@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用内语言列表（Android 13+ Per-app language）。
+  这里声明的语言会出现在系统的「设置 → 应用 → WattScope Next → 语言」里。
+  zh-CN 命中 res/values（默认中文），en 命中 res/values-en。
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="zh-CN" />
+    <locale android:name="en" />
+</locale-config>

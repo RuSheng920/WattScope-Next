@@ -50,10 +50,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.ui.components.CircularProgress
 import io.github.rusheng920.wattscope.ui.components.IconBadge
@@ -85,7 +87,7 @@ fun PermissionCenter(
     onOpenAutostart: () -> Unit,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 24.dp,
-    intro: String? = "授权状态会实时刷新；未授予的权限可随时在这里补齐。",
+    intro: String? = stringResource(R.string.perm_intro),
 ) {
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -105,15 +107,15 @@ fun PermissionCenter(
 
         item { PermissionProgressCard(permissions) }
 
-        item { SectionTitle("核心权限") }
+        item { SectionTitle(stringResource(R.string.perm_section_core)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 PermissionRow(
-                    title = "Root 权限",
+                    title = stringResource(R.string.perm_root),
                     subtitle = when (permissions.root) {
-                        true -> "已获得超级用户授权，可以读取 QPT 功耗节点"
-                        false -> "未获得授权：功耗采样不可用，请在 KernelSU / Magisk 中允许本应用"
-                        null -> "尚未检测到授权状态，点击右侧按钮发起申请"
+                        true -> stringResource(R.string.perm_root_granted)
+                        false -> stringResource(R.string.perm_root_denied)
+                        null -> stringResource(R.string.perm_root_unknown)
                     },
                     icon = Icons.Rounded.Security,
                     iconTint = MaterialTheme.colorScheme.primary,
@@ -123,72 +125,92 @@ fun PermissionCenter(
                         null -> PillTone.NEUTRAL
                     },
                     statusText = when (permissions.root) {
-                        true -> "已授予"
-                        false -> "未授予"
-                        null -> "未检测"
+                        true -> stringResource(R.string.state_granted)
+                        false -> stringResource(R.string.state_not_granted)
+                        null -> stringResource(R.string.state_undetected)
                     },
-                    actionText = if (permissions.root == true) "重新检测" else "申请授权",
+                    actionText = if (permissions.root == true) {
+                        stringResource(R.string.action_recheck)
+                    } else {
+                        stringResource(R.string.action_request)
+                    },
                     actionFilled = permissions.root != true,
                     onAction = onRequestRoot,
                 )
                 PermissionRow(
-                    title = "悬浮窗权限",
-                    subtitle = "悬浮球与 OSD 实时功耗浮层需要显示在其他应用上层",
+                    title = stringResource(R.string.perm_overlay),
+                    subtitle = stringResource(R.string.perm_overlay_desc),
                     icon = Icons.Rounded.Layers,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     tone = if (permissions.overlay) PillTone.OK else PillTone.WARN,
-                    statusText = if (permissions.overlay) "已授予" else "未授予",
-                    actionText = if (permissions.overlay) null else "去授权",
+                    statusText = if (permissions.overlay) {
+                        stringResource(R.string.state_granted)
+                    } else {
+                        stringResource(R.string.state_not_granted)
+                    },
+                    actionText = if (permissions.overlay) null else stringResource(R.string.action_grant),
                     onAction = onRequestOverlay,
                     showDivider = true,
                 )
                 PermissionRow(
-                    title = "通知权限",
-                    subtitle = "前台服务需要常驻通知，用于保活与快捷控制",
+                    title = stringResource(R.string.perm_notification),
+                    subtitle = stringResource(R.string.perm_notification_desc),
                     icon = Icons.Rounded.Notifications,
                     iconTint = MaterialTheme.colorScheme.tertiary,
                     tone = if (permissions.notifications) PillTone.OK else PillTone.WARN,
-                    statusText = if (permissions.notifications) "已开启" else "已关闭",
-                    actionText = if (permissions.notifications) null else "去开启",
+                    statusText = if (permissions.notifications) {
+                        stringResource(R.string.state_on)
+                    } else {
+                        stringResource(R.string.state_off)
+                    },
+                    actionText = if (permissions.notifications) null else stringResource(R.string.action_turn_on),
                     onAction = onRequestNotifications,
                     showDivider = true,
                 )
             }
         }
 
-        item { SectionTitle("后台与识别") }
+        item { SectionTitle(stringResource(R.string.perm_section_background)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 PermissionRow(
-                    title = "电池优化白名单",
-                    subtitle = "避免系统在息屏后冻结采样与记录",
+                    title = stringResource(R.string.perm_battery),
+                    subtitle = stringResource(R.string.perm_battery_desc),
                     icon = Icons.Rounded.BatteryChargingFull,
                     iconTint = MaterialTheme.colorScheme.primary,
                     tone = if (permissions.batteryUnrestricted) PillTone.OK else PillTone.WARN,
-                    statusText = if (permissions.batteryUnrestricted) "已加入" else "受限制",
-                    actionText = if (permissions.batteryUnrestricted) null else "去设置",
+                    statusText = if (permissions.batteryUnrestricted) {
+                        stringResource(R.string.state_added)
+                    } else {
+                        stringResource(R.string.state_restricted)
+                    },
+                    actionText = if (permissions.batteryUnrestricted) null else stringResource(R.string.action_open_settings),
                     onAction = onRequestBattery,
                 )
                 PermissionRow(
-                    title = "使用情况访问",
-                    subtitle = "用于识别前台应用：FPS 跟随与「退出应用自动停止记录」依赖它",
+                    title = stringResource(R.string.perm_usage),
+                    subtitle = stringResource(R.string.perm_usage_desc),
                     icon = Icons.Rounded.Insights,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     tone = if (permissions.usageAccess) PillTone.OK else PillTone.NEUTRAL,
-                    statusText = if (permissions.usageAccess) "已允许" else "可选",
-                    actionText = if (permissions.usageAccess) null else "去授权",
+                    statusText = if (permissions.usageAccess) {
+                        stringResource(R.string.state_allowed)
+                    } else {
+                        stringResource(R.string.state_optional)
+                    },
+                    actionText = if (permissions.usageAccess) null else stringResource(R.string.action_grant),
                     onAction = onRequestUsage,
                     showDivider = true,
                 )
                 if (permissions.isMiui) {
                     PermissionRow(
-                        title = "自启动管理",
-                        subtitle = "MIUI/HyperOS 会清理后台进程，建议允许自启动",
+                        title = stringResource(R.string.perm_autostart),
+                        subtitle = stringResource(R.string.perm_autostart_desc),
                         icon = Icons.Rounded.RestartAlt,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         tone = PillTone.NEUTRAL,
-                        statusText = "建议开启",
-                        actionText = "去设置",
+                        statusText = stringResource(R.string.state_suggest_on),
+                        actionText = stringResource(R.string.action_open_settings),
                         onAction = onOpenAutostart,
                         showDivider = true,
                     )
@@ -213,21 +235,36 @@ fun PermissionCenter(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "本页每 1.5 秒自动检测一次授权状态；Root 授权变化会在授权完成后立即生效，无需重启应用。",
+                    stringResource(R.string.perm_auto_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
-        item { SectionTitle("首次使用") }
+        item { SectionTitle(stringResource(R.string.perm_section_first_run)) }
         item {
             MiuixCard(contentPadding = 16.dp) {
-                StepRow(1, "授予 Root 权限", "在 KernelSU / Magisk 弹窗中允许本应用", isLast = false)
+                StepRow(
+                    1,
+                    stringResource(R.string.perm_step1_title),
+                    stringResource(R.string.perm_step1_desc),
+                    isLast = false,
+                )
                 Spacer(Modifier.height(8.dp))
-                StepRow(2, "开启悬浮窗与通知", "悬浮球、OSD 浮层和前台服务依赖这两项", isLast = false)
+                StepRow(
+                    2,
+                    stringResource(R.string.perm_step2_title),
+                    stringResource(R.string.perm_step2_desc),
+                    isLast = false,
+                )
                 Spacer(Modifier.height(8.dp))
-                StepRow(3, "回到仪表盘开始记录", "也可以单击悬浮球，退出被记录应用时自动停止", isLast = true)
+                StepRow(
+                    3,
+                    stringResource(R.string.perm_step3_title),
+                    stringResource(R.string.perm_step3_desc),
+                    isLast = true,
+                )
             }
         }
     }
@@ -282,12 +319,16 @@ fun PermissionPage(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     MiuixIconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text("权限中心", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.perm_title), style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "${permissions.requiredGranted()} / ${permissions.requiredTotal()} 项核心权限已就绪",
+                            stringResource(
+                                R.string.settings_perm_ready_fmt,
+                                permissions.requiredGranted(),
+                                permissions.requiredTotal(),
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -295,7 +336,7 @@ fun PermissionPage(
                     MiuixIconButton(onClick = onRefresh) {
                         Icon(
                             Icons.Rounded.Refresh,
-                            contentDescription = "刷新",
+                            contentDescription = stringResource(R.string.action_refresh),
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(21.dp),
                         )
@@ -366,7 +407,7 @@ fun OnboardingScreen(
                 Text("WattScope Next", style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "高通 QPT 实时功耗遥测。开始前先完成必要的授权，之后可在「设置 → 权限中心」随时调整。",
+                    stringResource(R.string.onboarding_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -395,12 +436,12 @@ fun OnboardingScreen(
             ) {
                 // 两个按钮按权重分配宽度：窄屏或大字体下也不会互相挤压成畸形
                 MiuixTextButton(
-                    text = "稍后设置",
+                    text = stringResource(R.string.action_later),
                     onClick = onSkip,
                     modifier = Modifier.weight(1f),
                 )
                 PillButton(
-                    text = "完成，进入应用",
+                    text = stringResource(R.string.action_finish),
                     onClick = onFinish,
                     modifier = Modifier.weight(1.7f),
                     horizontalPadding = 12.dp,
@@ -471,12 +512,20 @@ private fun PermissionProgressCard(permissions: AppPermissions) {
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    if (ready) "权限已就绪" else "还需完成 ${total - granted} 项授权",
+                    if (ready) {
+                        stringResource(R.string.perm_progress_ready)
+                    } else {
+                        stringResource(R.string.perm_progress_left_fmt, total - granted)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    if (ready) "所有核心功能均可正常使用" else "核心权限：Root、悬浮窗、通知",
+                    if (ready) {
+                        stringResource(R.string.perm_progress_ready_desc)
+                    } else {
+                        stringResource(R.string.perm_progress_left_desc)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -1,5 +1,8 @@
 package io.github.rusheng920.wattscope.domain
 
+import androidx.annotation.StringRes
+import io.github.rusheng920.wattscope.R
+
 data class PowerZone(
     val path: String,
     val name: String,
@@ -47,10 +50,10 @@ data class ZoneStats(
 )
 
 /** 外观模式：跟随系统 / 强制浅色 / 强制深色（持久化到 SharedPreferences）。 */
-enum class ThemeMode(val key: String, val label: String) {
-    SYSTEM("system", "跟随系统"),
-    LIGHT("light", "浅色"),
-    DARK("dark", "深色"),
+enum class ThemeMode(val key: String, @StringRes val labelRes: Int) {
+    SYSTEM("system", R.string.theme_system),
+    LIGHT("light", R.string.theme_light),
+    DARK("dark", R.string.theme_dark),
 }
 
 /**
@@ -68,15 +71,15 @@ enum class ThemeMode(val key: String, val label: String) {
  */
 enum class GlassIntensity(
     val key: String,
-    val label: String,
+    @StringRes val labelRes: Int,
     val tintAlpha: Float,
     val blurRadiusDp: Float,
     val refractionHeightDp: Float,
     val refractionAmountDp: Float,
 ) {
-    LIGHT("light", "轻盈", 0.05f, 2f, 10f, 16f),
-    STANDARD("standard", "标准", 0.10f, 4f, 14f, 24f),
-    STRONG("strong", "浓郁", 0.18f, 8f, 18f, 32f),
+    LIGHT("light", R.string.glass_light, 0.05f, 2f, 10f, 16f),
+    STANDARD("standard", R.string.glass_standard, 0.10f, 4f, 14f, 24f),
+    STRONG("strong", R.string.glass_strong, 0.18f, 8f, 18f, 32f),
 }
 
 /**
@@ -86,24 +89,24 @@ enum class GlassIntensity(
  * 手指粗或需要更大命中率时切到「大」。
  * 尺寸改动由服务监听偏好实时应用，无需重启。
  */
-enum class BubbleSize(val key: String, val label: String, val sizeDp: Int) {
-    MINI("mini", "迷你", 32),
-    STANDARD("standard", "标准", 40),
-    LARGE("large", "大", 48),
+enum class BubbleSize(val key: String, @StringRes val labelRes: Int, val sizeDp: Int) {
+    MINI("mini", R.string.bubble_mini, 32),
+    STANDARD("standard", R.string.bubble_standard, 40),
+    LARGE("large", R.string.bubble_large, 48),
 }
 
-enum class SamplingInterval(val millis: Long, val label: String) {
-    Ms100(100, "100 毫秒"),
-    Ms200(200, "200 毫秒"),
-    Ms500(500, "500 毫秒"),
-    Ms1000(1_000, "1000 毫秒"),
+enum class SamplingInterval(val millis: Long, @StringRes val labelRes: Int) {
+    Ms100(100, R.string.interval_100),
+    Ms200(200, R.string.interval_200),
+    Ms500(500, R.string.interval_500),
+    Ms1000(1_000, R.string.interval_1000),
 }
 
 data class RecordingState(
     val isRecording: Boolean = false,
     val qptAvailable: Boolean = false,
     val qptEnabled: Boolean = false,
-    val status: String = "正在检查 QPT",
+    val status: StatusText = StatusText(R.string.status_checking_qpt),
     val zones: List<PowerZone> = emptyList(),
     val latestSamples: List<ZoneSample> = emptyList(),
     val interval: SamplingInterval = SamplingInterval.Ms200,
@@ -185,34 +188,34 @@ data class FpsSample(
 )
 
 /** OSD 悬浮窗可选监控项（enum 声明顺序即默认显示顺序）。 */
-enum class OsdMetric(val key: String, val label: String) {
-    SOC_POWER("soc_power", "SOC"),
-    CPU_L_POWER("cpu_l_power", "CPU-L"),
-    CPU_M_POWER("cpu_m_power", "CPU-M"),
-    GPU_POWER("gpu_power", "GPU"),
-    GPU_FREQ("gpu_freq", "GPU频率"),
-    FPS("fps", "FPS"),
-    CPU_TEMP("cpu_temp", "CPU温度"),
-    GPU_TEMP("gpu_temp", "GPU温度"),
-    DDR_TEMP("ddr_temp", "DDR温度"),
-    GPU_USAGE("gpu_usage", "GPU占用"),
-    DEVICE_POWER("device_power", "整机"),
+enum class OsdMetric(val key: String, @StringRes val labelRes: Int) {
+    SOC_POWER("soc_power", R.string.osd_metric_soc_power),
+    CPU_L_POWER("cpu_l_power", R.string.osd_metric_cpu_l),
+    CPU_M_POWER("cpu_m_power", R.string.osd_metric_cpu_m),
+    GPU_POWER("gpu_power", R.string.osd_metric_gpu),
+    GPU_FREQ("gpu_freq", R.string.osd_metric_gpu_freq),
+    FPS("fps", R.string.osd_metric_fps),
+    CPU_TEMP("cpu_temp", R.string.osd_metric_cpu_temp),
+    GPU_TEMP("gpu_temp", R.string.osd_metric_gpu_temp),
+    DDR_TEMP("ddr_temp", R.string.osd_metric_ddr_temp),
+    GPU_USAGE("gpu_usage", R.string.osd_metric_gpu_usage),
+    DEVICE_POWER("device_power", R.string.osd_metric_device),
 }
 
 /**
  * 记录详情页曲线区块。声明顺序即默认排序（分析动线：总功率 → 性能 → 原因下钻 → 分区细分 → 温度）。
  * 用户可在详情页自定义排序，持久化到全局设置 —— 所有记录共用同一顺序。
  */
-enum class DetailChartSection(val label: String) {
-    SOC("SOC 功率"),
-    FPS("FPS"),
-    DEVICE_POWER("整机功耗"),
-    CLUSTER_FREQ("CPU 簇频率"),
-    CORE_USAGE("CPU 核心占用"),
-    GPU("GPU 频率/占用"),
-    DDR("DDR 频率"),
-    ZONES("分区功率"),
-    TEMP("温度"),
+enum class DetailChartSection(@StringRes val labelRes: Int) {
+    SOC(R.string.chart_soc_power),
+    FPS(R.string.chart_fps),
+    DEVICE_POWER(R.string.chart_device_power),
+    CLUSTER_FREQ(R.string.chart_cluster_freq),
+    CORE_USAGE(R.string.chart_core_usage),
+    GPU(R.string.chart_gpu_freq_usage),
+    DDR(R.string.chart_ddr_freq),
+    ZONES(R.string.chart_zone_power),
+    TEMP(R.string.chart_temperature),
 }
 
 /** OSD 悬浮窗实时数据（不落库，仅内存展示）。 */
@@ -229,8 +232,8 @@ data class OsdSample(
     val ddrTempC: Float? = null,
     val devicePowerUw: Long? = null,
 ) {
-    /** 将指定监控项格式化为 "标签 值单位" 展示文本；无数据返回 null。 */
-    fun format(metric: OsdMetric): String? = value(metric)?.let { "${metric.label} $it" }
+    /** 将指定监控项格式化为 "标签 值单位" 展示文本；[label] 由调用方按当前语言解析。 */
+    fun format(metric: OsdMetric, label: String): String? = value(metric)?.let { "$label $it" }
 
     /**
      * 只取值与单位（不含标签）：OSD 面板把标签和数值分两列排版，

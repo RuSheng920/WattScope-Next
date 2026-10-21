@@ -68,4 +68,5 @@ Chart order is configurable: the **Sort** button next to the "Curves" heading of
 
 - [Features](/en/guide/features)
 - [Floating ball & OSD](/en/guide/overlay)
+- [Permissions & troubleshooting](/en/guide/permissions)
 - [FAQ](/en/guide/faq)

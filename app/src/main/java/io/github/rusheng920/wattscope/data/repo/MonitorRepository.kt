@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.room.withTransaction
+import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.core.auxiliary.AuxReader
 import io.github.rusheng920.wattscope.core.fps.FpsReader
 import io.github.rusheng920.wattscope.core.qpt.QptPowerReader
@@ -37,6 +38,7 @@ import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.OsdSample
 import io.github.rusheng920.wattscope.domain.RecordingState
 import io.github.rusheng920.wattscope.domain.SamplingInterval
+import io.github.rusheng920.wattscope.domain.StatusText
 import io.github.rusheng920.wattscope.domain.TempSample
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
@@ -237,10 +239,10 @@ class MonitorRepository(
         prefs.edit().putBoolean("onboarding_done", true).apply()
         _onboardingDone.value = true
         if (probe) {
-            _state.update { it.copy(status = "正在检查 QPT") }
+            _state.update { it.copy(status = StatusText(R.string.status_checking_qpt)) }
             refreshDeviceState(force = true)
         } else {
-            _state.update { it.copy(status = "尚未授予 Root，部分功能不可用") }
+            _state.update { it.copy(status = StatusText(R.string.status_root_skipped)) }
         }
     }
 
@@ -369,7 +371,7 @@ class MonitorRepository(
     suspend fun refreshDeviceState(force: Boolean = false) = withContext(Dispatchers.IO) {
         // 首次引导未完成前不探测：hasRoot() 会拉起 su 授权框，必须由用户在权限页主动触发
         if (!_onboardingDone.value) {
-            _state.update { it.copy(status = "请先完成权限设置") }
+            _state.update { it.copy(status = StatusText(R.string.status_need_permissions)) }
             return@withContext
         }
         val now = SystemClock.elapsedRealtime()
@@ -377,7 +379,7 @@ class MonitorRepository(
 
         val rootOk = qptReader.hasRoot()
         if (!rootOk) {
-            _state.update { it.copy(qptAvailable = false, qptEnabled = false, status = "Root 失败，请检查 KernelSU 授权") }
+            _state.update { it.copy(qptAvailable = false, qptEnabled = false, status = StatusText(R.string.status_root_failed)) }
             return@withContext
         }
         val available = qptReader.isAvailable()
@@ -403,9 +405,13 @@ class MonitorRepository(
                 gpuSensor = gpuSensor,
                 ddrFreqPath = ddrFreqPath,
                 status = if (available) {
-                    if (enabled) "QPT 已开启，发现 ${zones.size} 个功耗分区" else "QPT 已关闭"
+                    if (enabled) {
+                        StatusText(R.string.status_qpt_on_fmt, listOf(zones.size))
+                    } else {
+                        StatusText(R.string.status_qpt_off)
+                    }
                 } else {
-                    "无 QPT 支持，仅记录频率/温度等数据"
+                    StatusText(R.string.status_no_qpt)
                 },
             )
         }
@@ -418,7 +424,7 @@ class MonitorRepository(
 
     suspend fun setQptEnabled(enabled: Boolean) {
         if (!qptReader.setEnabled(enabled)) {
-            _state.update { it.copy(status = "写入 enabled 失败，请检查 KernelSU 授权") }
+            _state.update { it.copy(status = StatusText(R.string.status_write_enabled_failed)) }
             return
         }
         if (enabled) {
@@ -599,7 +605,13 @@ class MonitorRepository(
         val current = _state.value
         if (!current.canRecord) {
             _state.update {
-                it.copy(status = if (current.qptAvailable) "请开启 QPT 或检查监控源" else "无可用监控数据源")
+                it.copy(
+                    status = if (current.qptAvailable) {
+                        StatusText(R.string.status_need_source)
+                    } else {
+                        StatusText(R.string.status_no_source)
+                    },
+                )
             }
             return false
         }
@@ -627,8 +639,16 @@ class MonitorRepository(
         qptReader.resetDeltas()
         auxReader.resetDeltas()
         fpsReader.reset()
-        val qptNote = if (current.qptEnabled) "" else "（无 QPT）"
-        _state.update { it.copy(isRecording = true, status = "记录中$qptNote：${app.appName}") }
+        _state.update {
+            it.copy(
+                isRecording = true,
+                status = if (current.qptEnabled) {
+                    StatusText(R.string.status_recording_fmt, listOf(app.appName))
+                } else {
+                    StatusText(R.string.status_recording_no_qpt_fmt, listOf(app.appName))
+                },
+            )
+        }
         // 记录期间由 record 循环接管首页刷新，暂停实时循环
         stopLive()
 
@@ -819,7 +839,7 @@ class MonitorRepository(
             ),
         )
         activeRecord = null
-        _state.update { it.copy(isRecording = false, status = "记录已保存") }
+        _state.update { it.copy(isRecording = false, status = StatusText(R.string.status_saved)) }
     }
 
     fun observeRecord(id: Long) = recordDao.observeRecord(id)

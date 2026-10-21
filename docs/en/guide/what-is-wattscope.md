@@ -60,4 +60,5 @@ The package name differs, so this is a clean install and history will not be mig
 
 - [Install & setup](/en/guide/getting-started)
 - [Features](/en/guide/features)
+- [Permissions & troubleshooting](/en/guide/permissions)
 - [FAQ](/en/guide/faq)

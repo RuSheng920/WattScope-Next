@@ -1,7 +1,9 @@
 package io.github.rusheng920.wattscope.ui
 
+import android.app.LocaleManager
 import android.content.Intent
 import android.net.Uri
+import android.os.LocaleList
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -89,6 +91,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,6 +104,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.rusheng920.wattscope.BuildConfig
+import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
@@ -109,6 +113,7 @@ import io.github.rusheng920.wattscope.domain.DetailChartSection
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
+import io.github.rusheng920.wattscope.domain.StatusText
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
 import io.github.rusheng920.wattscope.domain.ZoneStats
@@ -257,7 +262,7 @@ fun QptApp(
                             }) {
                                 Icon(
                                     if (isDarkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                                    contentDescription = "切换主题",
+                                    contentDescription = stringResource(R.string.action_toggle_theme),
                                     tint = MiuixTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(21.dp),
                                 )
@@ -265,7 +270,7 @@ fun QptApp(
                             MiuixIconButton(onClick = viewModel::refresh) {
                                 Icon(
                                     Icons.Rounded.Refresh,
-                                    contentDescription = "刷新",
+                                    contentDescription = stringResource(R.string.action_refresh),
                                     tint = MiuixTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(21.dp),
                                 )
@@ -274,17 +279,21 @@ fun QptApp(
                     )
 
                     1 -> TopAppBar(
-                        title = "记录",
-                        largeTitle = "记录",
+                        title = stringResource(R.string.nav_history),
+                        largeTitle = stringResource(R.string.nav_history),
                         scrollBehavior = topBarScroll,
                         actions = {
                             if (records.isNotEmpty()) {
-                                MiuixTextButton(text = "清空", onClick = viewModel::deleteAll)
+                                MiuixTextButton(text = stringResource(R.string.action_clear), onClick = viewModel::deleteAll)
                             }
                         },
                     )
 
-                    else -> TopAppBar(title = "设置", largeTitle = "设置", scrollBehavior = topBarScroll)
+                    else -> TopAppBar(
+                        title = stringResource(R.string.nav_settings),
+                        largeTitle = stringResource(R.string.nav_settings),
+                        scrollBehavior = topBarScroll,
+                    )
                 }
             },
             bottomBar = {
@@ -292,9 +301,9 @@ fun QptApp(
                 if (!glassBottomBar) {
                     MiuixBottomBar(
                         items = listOf(
-                            BottomItem("仪表盘", Icons.Rounded.Speed),
-                            BottomItem("记录", Icons.Rounded.History),
-                            BottomItem("设置", Icons.Rounded.Settings),
+                            BottomItem(stringResource(R.string.nav_dashboard), Icons.Rounded.Speed),
+                            BottomItem(stringResource(R.string.nav_history), Icons.Rounded.History),
+                            BottomItem(stringResource(R.string.nav_settings), Icons.Rounded.Settings),
                         ),
                         selected = tab,
                         onSelect = { tab = it },
@@ -385,9 +394,9 @@ fun QptApp(
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 FloatingGlassBottomBar(
                     items = listOf(
-                        BottomItem("仪表盘", Icons.Rounded.Speed),
-                        BottomItem("记录", Icons.Rounded.History),
-                        BottomItem("设置", Icons.Rounded.Settings),
+                        BottomItem(stringResource(R.string.nav_dashboard), Icons.Rounded.Speed),
+                        BottomItem(stringResource(R.string.nav_history), Icons.Rounded.History),
+                        BottomItem(stringResource(R.string.nav_settings), Icons.Rounded.Settings),
                     ),
                     selected = tab,
                     onSelect = { tab = it },
@@ -445,7 +454,7 @@ fun QptApp(
 
 @Composable
 private fun Dashboard(
-    status: String,
+    status: StatusText,
     enabled: Boolean,
     isRecording: Boolean,
     canRecord: Boolean,
@@ -485,12 +494,15 @@ private fun Dashboard(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "还有 ${permissions.requiredTotal() - permissions.requiredGranted()} 项权限未授予",
+                                stringResource(
+                                    R.string.dash_perm_missing_fmt,
+                                    permissions.requiredTotal() - permissions.requiredGranted(),
+                                ),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                             )
                             Text(
-                                "Root / 悬浮窗 / 通知，点击前往授权",
+                                stringResource(R.string.dash_perm_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
                             )
@@ -519,10 +531,14 @@ private fun Dashboard(
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("分区数", samples.size.toString(), Modifier.weight(1f))
+                StatTile(stringResource(R.string.dash_stat_zones), samples.size.toString(), Modifier.weight(1f))
                 StatTile(
-                    "整机功耗",
-                    if (devicePowerAvailable) devicePowerUw?.let { uwToW(it) } ?: "--" else "不可用",
+                    stringResource(R.string.dash_stat_device_power),
+                    if (devicePowerAvailable) {
+                        devicePowerUw?.let { uwToW(it) } ?: "--"
+                    } else {
+                        stringResource(R.string.state_unavailable)
+                    },
                     Modifier.weight(1f),
                 )
                 StatTile("FPS", latestFps?.let { "%.0f".format(Locale.US, it) } ?: "--", Modifier.weight(1f))
@@ -532,12 +548,15 @@ private fun Dashboard(
         item {
             MiuixCard(contentPadding = 14.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("实时功耗", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.dash_live_power), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     Text(
                         if (samples.isEmpty()) {
-                            "等待数据"
+                            stringResource(R.string.state_waiting)
                         } else {
-                            "峰值 ${uwToW(samples.maxOfOrNull { it.effectivePowerUw } ?: 0L)}"
+                            stringResource(
+                                R.string.dash_peak_fmt,
+                                uwToW(samples.maxOfOrNull { it.effectivePowerUw } ?: 0L),
+                            )
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -550,7 +569,7 @@ private fun Dashboard(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "开启 QPT 后显示各分区功耗柱状图",
+                            stringResource(R.string.dash_qpt_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -562,7 +581,7 @@ private fun Dashboard(
         }
 
         item {
-            SectionTitle("功耗分区")
+            SectionTitle(stringResource(R.string.dash_zones_title))
         }
 
         item {
@@ -570,8 +589,8 @@ private fun Dashboard(
                 MiuixCard {
                     EmptyState(
                         icon = Icons.Rounded.Layers,
-                        title = "还没有分区数据",
-                        description = "开启 QPT 或开始记录后，这里会按分区显示实时功耗。",
+                        title = stringResource(R.string.dash_zones_empty_title),
+                        description = stringResource(R.string.dash_zones_empty_desc),
                     )
                 }
             } else {
@@ -598,7 +617,11 @@ private fun Dashboard(
             item {
                 MiuixCard(contentPadding = 14.dp) {
                     Text(
-                        "已识别 ${zoneNames.size} 个监控项：${zoneNames.joinToString("、")}",
+                        stringResource(
+                            R.string.dash_zones_found_fmt,
+                            zoneNames.size,
+                            zoneNames.joinToString(stringResource(R.string.list_separator)),
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -610,7 +633,7 @@ private fun Dashboard(
 
 @Composable
 private fun HeroCard(
-    status: String,
+    status: StatusText,
     enabled: Boolean,
     isRecording: Boolean,
     canRecord: Boolean,
@@ -660,7 +683,7 @@ private fun HeroCard(
                             }
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "SOC 实时功耗",
+                                stringResource(R.string.hero_soc_power),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -680,7 +703,7 @@ private fun HeroCard(
                             )
                         }
                         Text(
-                            status,
+                            status.resolve(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -689,7 +712,11 @@ private fun HeroCard(
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatusPill(
-                            if (isRecording) "录制中" else "待机",
+                            if (isRecording) {
+                                stringResource(R.string.state_recording)
+                            } else {
+                                stringResource(R.string.state_idle)
+                            },
                             if (isRecording) PillTone.OK else PillTone.NEUTRAL,
                         )
                         MiuixSwitch(checked = enabled, onCheckedChange = onToggleEnabled)
@@ -697,7 +724,11 @@ private fun HeroCard(
                 }
                 Spacer(Modifier.height(18.dp))
                 PillButton(
-                    text = if (isRecording) "停止记录" else "开始记录",
+                    text = if (isRecording) {
+                        stringResource(R.string.action_stop_recording)
+                    } else {
+                        stringResource(R.string.action_start_recording)
+                    },
                     onClick = onRecordClick,
                     enabled = canRecord || isRecording,
                     filled = !isRecording,
@@ -890,7 +921,7 @@ private fun TimeSeriesChart(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             Text(
-                "$refSize 个采样点",
+                stringResource(R.string.chart_samples_fmt, refSize),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
@@ -1001,7 +1032,7 @@ private fun AvgChip(name: String, value: String, color: Color) {
         Box(Modifier.size(6.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(4.dp))
         Text(
-            "$name 均值 $value",
+            stringResource(R.string.chart_avg_fmt, name, value),
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1073,7 +1104,7 @@ private fun CrosshairTooltip(
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
-                "时间 %.2f 秒".format(Locale.US, relativeSeconds),
+                stringResource(R.string.chart_time_fmt, relativeSeconds),
                 color = chartColors.tooltipMuted,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
@@ -1291,9 +1322,10 @@ private fun FpsChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?)
 private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
     detail.devicePowerSamples.takeIf { it.isNotEmpty() }?.let { powers ->
+        val label = stringResource(R.string.chart_device_power)
         TimeSeriesChart(
-            "整机功耗",
-            listOf(SeriesData("整机功耗", palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f })),
+            label,
+            listOf(SeriesData(label, palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f })),
             formatter = { v -> "%.2f W".format(Locale.US, v) },
             globalTs = globalTs,
             onTsChange = onTsChange,
@@ -1311,7 +1343,7 @@ private fun ClusterFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange:
             .mapIndexed { i, (name, rows) ->
                 SeriesData(name, clusterColorAt(palette, i), rows.map { it.timestampMs to it.freqKhz * 1000f })
             }
-        TimeSeriesChart("CPU 簇频率", series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
+        TimeSeriesChart(stringResource(R.string.chart_cluster_freq), series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
     }
 }
 
@@ -1326,7 +1358,7 @@ private fun CoreUsageChart(detail: DetailUiState, globalTs: Long?, onTsChange: (
             SeriesData("C$core", color, rows.map { it.timestampMs to it.usagePercent })
         }.sortedBy { it.name.removePrefix("C").toIntOrNull() ?: 0 }
         TimeSeriesChart(
-            "CPU 核心占用",
+            stringResource(R.string.chart_core_usage),
             series,
             { v -> "%.0f%%".format(Locale.US, v) },
             interactive = false,
@@ -1341,7 +1373,7 @@ private fun DdrFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Lo
     val palette = LocalChartColors.current.palette
     detail.ddrFreqSamples.takeIf { it.isNotEmpty() }?.let { ddr ->
         TimeSeriesChart(
-            "DDR 频率",
+            stringResource(R.string.chart_ddr_freq),
             listOf(SeriesData("DDR", palette[0], ddr.map { it.timestampMs to it.freqHz.toFloat() })),
             ::formatFreqHz,
             globalTs = globalTs,
@@ -1395,7 +1427,7 @@ private fun ChartOrderEditor(order: List<DetailChartSection>, onChange: (List<De
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "${index + 1}. ${section.label}",
+                            "${index + 1}. ${stringResource(section.labelRes)}",
                             Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -1419,7 +1451,7 @@ private fun ChartOrderEditor(order: List<DetailChartSection>, onChange: (List<De
             }
         }
         Text(
-            "排序对所有记录生效",
+            stringResource(R.string.chart_sort_hint),
             Modifier.padding(start = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1452,22 +1484,28 @@ private fun GpuMergedChart(
 ) {
     val palette = LocalChartColors.current.palette
     detail.gpuSamples.takeIf { it.isNotEmpty() }?.let { gpus ->
-        val freq = SeriesData("频率", palette[0], gpus.map { it.timestampMs to it.freqHz.toFloat() })
+        val freq = SeriesData(stringResource(R.string.chart_freq), palette[0], gpus.map { it.timestampMs to it.freqHz.toFloat() })
         val usage = gpus.mapNotNull { it.usagePercent?.let { p -> it.timestampMs to p } }
         if (usage.isNotEmpty()) {
             TimeSeriesChart(
-                "GPU 频率与占用",
+                stringResource(R.string.chart_gpu_freq_and_usage),
                 listOf(freq),
                 ::formatFreqHz,
                 globalTs = globalTs,
                 onTsChange = onTsChange,
-                rightSeries = SeriesData("占用", palette[1], usage),
+                rightSeries = SeriesData(stringResource(R.string.chart_usage), palette[1], usage),
                 rightFormatter = { v -> "%.0f%%".format(Locale.US, v) },
                 rightFixedMax = 100f,
                 rightTickCount = 11,
             )
         } else {
-            TimeSeriesChart("GPU 频率", listOf(freq), ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
+            TimeSeriesChart(
+                stringResource(R.string.chart_gpu_freq),
+                listOf(freq),
+                ::formatFreqHz,
+                globalTs = globalTs,
+                onTsChange = onTsChange,
+            )
         }
     }
 }
@@ -1483,7 +1521,7 @@ private fun TempChart(
         val series = temps.groupBy { it.sensor }.entries.mapIndexed { i, (sensor, rows) ->
             SeriesData(sensor.uppercase(), palette[i % palette.size], rows.map { it.timestampMs to it.tempC })
         }
-        TimeSeriesChart("温度", series, formatter = { v -> "%.1f °C".format(Locale.US, v) }, globalTs = globalTs, onTsChange = onTsChange)
+        TimeSeriesChart(stringResource(R.string.chart_temperature), series, formatter = { v -> "%.1f °C".format(Locale.US, v) }, globalTs = globalTs, onTsChange = onTsChange)
     }
 }
 
@@ -1674,7 +1712,7 @@ private fun History(
         if (records.isNotEmpty()) {
             item {
                 Text(
-                    "共 ${records.size} 条记录",
+                    stringResource(R.string.history_count_fmt, records.size),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp),
@@ -1687,8 +1725,8 @@ private fun History(
                 MiuixCard(contentPadding = 0.dp) {
                     EmptyState(
                         icon = Icons.Rounded.History,
-                        title = "还没有记录",
-                        description = "点击仪表盘的「开始记录」，或单击悬浮球记录当前应用；退出应用时会自动停止。",
+                        title = stringResource(R.string.history_empty_title),
+                        description = stringResource(R.string.history_empty_desc),
                     )
                 }
             }
@@ -1708,14 +1746,17 @@ private fun History(
                             maxLines = 1,
                         )
                         Text(
-                            "${formatDate(record.startedAtMs)} · ${duration(record)}",
+                            "${formatDate(record.startedAtMs)} · ${durationText(record)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             StatusPill("SOC ${uwToW(record.avgSocPowerUw)}", PillTone.NEUTRAL)
                             StatusPill(
-                                "帧率 ${record.avgFps?.let { "%.1f".format(Locale.US, it) } ?: "--"}",
+                                stringResource(
+                                    R.string.history_fps_fmt,
+                                    record.avgFps?.let { "%.1f".format(Locale.US, it) } ?: "--",
+                                ),
                                 PillTone.NEUTRAL,
                             )
                         }
@@ -1723,7 +1764,7 @@ private fun History(
                     MiuixIconButton(onClick = { onDelete(record.id) }) {
                         Icon(
                             Icons.Rounded.Delete,
-                            contentDescription = "删除",
+                            contentDescription = stringResource(R.string.action_delete),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(19.dp),
                         )
@@ -1779,16 +1820,17 @@ private fun SettingsScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { SectionTitle("外观") }
+        item { SectionTitle(stringResource(R.string.settings_section_appearance)) }
+        item { LanguageCard() }
         item {
             MiuixCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBadge(Icons.Rounded.Palette)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("主题", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "深色模式在夜间更省电、更易读",
+                            stringResource(R.string.settings_theme_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1796,7 +1838,7 @@ private fun SettingsScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 SegmentedControl(
-                    options = ThemeMode.entries.map { it.label },
+                    options = ThemeMode.entries.map { stringResource(it.labelRes) },
                     selectedIndex = ThemeMode.entries.indexOf(themeMode),
                     onSelect = { onThemeMode(ThemeMode.entries[it]) },
                 )
@@ -1808,9 +1850,9 @@ private fun SettingsScreen(
                     IconBadge(Icons.Rounded.Layers)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("悬浮玻璃底栏", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.settings_glass_bar), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "低着色 + 边缘折射：内容从玻璃下方透出并被轻微弯曲",
+                            stringResource(R.string.settings_glass_bar_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1822,17 +1864,17 @@ private fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBadge(Icons.Rounded.Opacity, MaterialTheme.colorScheme.secondary)
                         Spacer(Modifier.width(14.dp))
-                        Text("液态玻璃浓度", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.settings_glass_intensity), style = MaterialTheme.typography.titleSmall)
                     }
                     Spacer(Modifier.height(10.dp))
                     SegmentedControl(
-                        options = GlassIntensity.entries.map { it.label },
+                        options = GlassIntensity.entries.map { stringResource(it.labelRes) },
                         selectedIndex = GlassIntensity.entries.indexOf(glassIntensity),
                         onSelect = { onGlassIntensity(GlassIntensity.entries[it]) },
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "三档只调整模糊半径与折射强度，表面着色始终很淡 —— 数值越大，玻璃越「厚」、边缘折射越明显。",
+                        stringResource(R.string.settings_glass_intensity_desc),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1841,9 +1883,9 @@ private fun SettingsScreen(
                         IconBadge(Icons.Rounded.Timer, MaterialTheme.colorScheme.tertiary)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("记录时暂停实时模糊", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.settings_glass_pause), style = MaterialTheme.typography.titleSmall)
                             Text(
-                                "实时模糊需要持续占用 GPU，开启后记录期间自动降级为静态玻璃，避免污染功耗数据",
+                                stringResource(R.string.settings_glass_pause_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1854,12 +1896,16 @@ private fun SettingsScreen(
             }
         }
 
-        item { SectionTitle("采样") }
+        item { SectionTitle(stringResource(R.string.settings_section_sampling)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
-                    title = "QPT 总开关",
-                    subtitle = if (enabled) "开启后读取各功耗分区" else "关闭后停止采样",
+                    title = stringResource(R.string.settings_qpt_switch),
+                    subtitle = if (enabled) {
+                        stringResource(R.string.settings_qpt_on_desc)
+                    } else {
+                        stringResource(R.string.settings_qpt_off_desc)
+                    },
                     icon = Icons.Rounded.Speed,
                     trailing = { MiuixSwitch(checked = enabled, onCheckedChange = onToggleEnabled) },
                 )
@@ -1872,7 +1918,7 @@ private fun SettingsScreen(
                 )
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "采样间隔",
+                        stringResource(R.string.settings_interval),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Row(
@@ -1881,14 +1927,14 @@ private fun SettingsScreen(
                     ) {
                         SamplingInterval.entries.forEach {
                             SelectChip(
-                                text = it.label,
+                                text = stringResource(it.labelRes),
                                 selected = it == interval,
                                 onClick = { onInterval(it) },
                             )
                         }
                     }
                     Text(
-                        "间隔越短数据越细，功耗与存储开销也越高；建议 200 毫秒。",
+                        stringResource(R.string.settings_interval_desc),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1899,8 +1945,8 @@ private fun SettingsScreen(
         item {
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
-                    title = "双电芯机型",
-                    subtitle = "部分双电芯手机 BMS 只上报单路电流，开启后整机功耗按双倍计算",
+                    title = stringResource(R.string.settings_dual_cell),
+                    subtitle = stringResource(R.string.settings_dual_cell_desc),
                     icon = Icons.Rounded.BatteryChargingFull,
                     iconTint = MaterialTheme.colorScheme.tertiary,
                     trailing = { MiuixSwitch(checked = dualCellMode, onCheckedChange = onDualCellMode) },
@@ -1908,12 +1954,12 @@ private fun SettingsScreen(
             }
         }
 
-        item { SectionTitle("悬浮窗") }
+        item { SectionTitle(stringResource(R.string.settings_section_overlay)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
-                    title = "悬浮球",
-                    subtitle = "单击记录 / 长按控制面板 / 拖到边缘自动吸附",
+                    title = stringResource(R.string.settings_bubble),
+                    subtitle = stringResource(R.string.settings_bubble_desc),
                     icon = Icons.Rounded.Layers,
                     trailing = { MiuixSwitch(checked = bubbleEnabled, onCheckedChange = onToggleBubble) },
                 )
@@ -1923,9 +1969,9 @@ private fun SettingsScreen(
                         Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text("悬浮球大小", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.settings_bubble_size), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "迷你档遮挡面积最小；改动立即生效，不需要重启服务",
+                            stringResource(R.string.settings_bubble_size_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1933,7 +1979,7 @@ private fun SettingsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             BubbleSize.entries.forEach { size ->
                                 SelectChip(
-                                    text = size.label,
+                                    text = stringResource(size.labelRes),
                                     selected = size == bubbleSize,
                                     onClick = { onBubbleSize(size) },
                                 )
@@ -1942,8 +1988,8 @@ private fun SettingsScreen(
                     }
                     CardInnerDivider()
                     ActionRow(
-                        title = "松手吸附边缘",
-                        subtitle = "开启后拖动松手会自动贴到屏幕左右边缘；关闭则停留在松手位置",
+                        title = stringResource(R.string.settings_bubble_snap),
+                        subtitle = stringResource(R.string.settings_bubble_snap_desc),
                         icon = Icons.Rounded.Layers,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         trailing = {
@@ -1953,8 +1999,8 @@ private fun SettingsScreen(
                 }
                 CardInnerDivider()
                 ActionRow(
-                    title = "OSD 实时浮层",
-                    subtitle = "两列 HUD，可拖动、轻点切换透明度、不写入记录",
+                    title = stringResource(R.string.settings_osd),
+                    subtitle = stringResource(R.string.settings_osd_desc),
                     icon = Icons.Rounded.Notifications,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     trailing = { MiuixSwitch(checked = osdEnabled, onCheckedChange = onToggleOsd) },
@@ -1969,9 +2015,13 @@ private fun SettingsScreen(
                         IconBadge(Icons.Rounded.Notifications, MaterialTheme.colorScheme.secondary)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("OSD 显示项", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.settings_osd_metrics), style = MaterialTheme.typography.titleSmall)
                             Text(
-                                "已选 ${osdMetrics.size} / ${OsdMetric.entries.size} 项，轻点切换；面板上轻点可循环透明度",
+                                stringResource(
+                                    R.string.settings_osd_metrics_desc,
+                                    osdMetrics.size,
+                                    OsdMetric.entries.size,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1984,7 +2034,7 @@ private fun SettingsScreen(
                     ) {
                         OsdMetric.entries.forEach { metric ->
                             SelectChip(
-                                text = metric.label,
+                                text = stringResource(metric.labelRes),
                                 selected = osdMetrics.contains(metric),
                                 onClick = {
                                     onOsdMetricsChange(
@@ -1998,25 +2048,32 @@ private fun SettingsScreen(
             }
         }
 
-        item { SectionTitle("FPS 数据源") }
+        item { SectionTitle(stringResource(R.string.settings_section_fps)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
-                    title = "自动跟随前台应用",
-                    subtitle = "优先 SurfaceView 图层，失败回退 gfxinfo",
+                    title = stringResource(R.string.settings_fps_auto),
+                    subtitle = stringResource(R.string.settings_fps_auto_desc),
                     icon = Icons.Rounded.Timer,
                     trailing = {
                         if (fpsLayer == null) {
-                            StatusPill("已启用", PillTone.OK)
+                            StatusPill(stringResource(R.string.state_enabled), PillTone.OK)
                         } else {
-                            MiuixTextButton(text = "启用", onClick = { onSelectFpsLayer(null) })
+                            MiuixTextButton(
+                                text = stringResource(R.string.action_enable),
+                                onClick = { onSelectFpsLayer(null) },
+                            )
                         }
                     },
                     onClick = { onSelectFpsLayer(null) },
                 )
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth()) {
                     PillButton(
-                        text = if (fpsLayers.isEmpty()) "扫描 SurfaceFlinger 图层" else "重新扫描图层",
+                        text = if (fpsLayers.isEmpty()) {
+                            stringResource(R.string.settings_scan_layers)
+                        } else {
+                            stringResource(R.string.settings_rescan_layers)
+                        },
                         onClick = onLoadFpsLayers,
                         filled = false,
                         modifier = Modifier.fillMaxWidth(),
@@ -2024,7 +2081,7 @@ private fun SettingsScreen(
                 }
                 if (fpsLayers.isNotEmpty()) {
                     Text(
-                        "手动指定图层（${fpsLayers.size}）",
+                        stringResource(R.string.settings_fps_manual_fmt, fpsLayers.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -2044,12 +2101,12 @@ private fun SettingsScreen(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            if (fpsLayer == layer) StatusPill("使用中", PillTone.OK)
+                            if (fpsLayer == layer) StatusPill(stringResource(R.string.state_in_use), PillTone.OK)
                         }
                     }
                 } else {
                     Text(
-                        "未扫描到图层：确认已授予 root；游戏需在前台运行时扫描才能看到其 SurfaceView 层。",
+                        stringResource(R.string.settings_fps_none),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -2058,33 +2115,45 @@ private fun SettingsScreen(
             }
         }
 
-        item { SectionTitle("服务与保活") }
+        item { SectionTitle(stringResource(R.string.settings_section_service)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
                 ActionRow(
-                    title = "权限中心",
-                    subtitle = "${permissions.requiredGranted()} / ${permissions.requiredTotal()} 项核心权限已就绪",
+                    title = stringResource(R.string.settings_permission_center),
+                    subtitle = stringResource(
+                        R.string.settings_perm_ready_fmt,
+                        permissions.requiredGranted(),
+                        permissions.requiredTotal(),
+                    ),
                     icon = Icons.Rounded.Shield,
                     iconTint = if (permissions.requiredReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     trailing = {
                         StatusPill(
-                            if (permissions.requiredReady) "已就绪" else "待授权",
+                            if (permissions.requiredReady) {
+                                stringResource(R.string.state_ready)
+                            } else {
+                                stringResource(R.string.state_pending_auth)
+                            },
                             if (permissions.requiredReady) PillTone.OK else PillTone.WARN,
                         )
                     },
                     onClick = onOpenPermissions,
                 )
                 ActionRow(
-                    title = "重启前台服务",
-                    subtitle = "通知被系统清理后可手动恢复",
+                    title = stringResource(R.string.settings_restart_service),
+                    subtitle = stringResource(R.string.settings_restart_service_desc),
                     icon = Icons.Rounded.Refresh,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     onClick = onStartService,
                     showDivider = true,
                 )
                 ActionRow(
-                    title = "电池优化白名单",
-                    subtitle = if (permissions.batteryUnrestricted) "已加入白名单" else "避免息屏后停止采样",
+                    title = stringResource(R.string.settings_battery),
+                    subtitle = if (permissions.batteryUnrestricted) {
+                        stringResource(R.string.settings_battery_added)
+                    } else {
+                        stringResource(R.string.settings_battery_desc)
+                    },
                     icon = Icons.Rounded.BatteryChargingFull,
                     iconTint = MaterialTheme.colorScheme.tertiary,
                     onClick = onRequestBatteryWhitelist,
@@ -2092,8 +2161,8 @@ private fun SettingsScreen(
                 )
                 if (permissions.isMiui) {
                     ActionRow(
-                        title = "MIUI 自启动管理",
-                        subtitle = "HyperOS 建议允许自启动",
+                        title = stringResource(R.string.settings_miui_autostart),
+                        subtitle = stringResource(R.string.settings_miui_autostart_desc),
                         icon = Icons.Rounded.Settings,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         onClick = onOpenMiuiAutostart,
@@ -2133,13 +2202,13 @@ private fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "版本 ${BuildConfig.VERSION_NAME} · 高通 QPT 功耗遥测",
+                        stringResource(R.string.about_version_fmt, BuildConfig.VERSION_NAME),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 ActionRow(
-                    title = "GitHub 项目主页",
+                    title = stringResource(R.string.about_github),
                     subtitle = "github.com/RuSheng920/WattScope-Next",
                     icon = Icons.Rounded.Code,
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2159,6 +2228,62 @@ private fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * 应用语言：写入系统级 Per-app language（API 33+）。
+ *
+ * 不额外落一份本地偏好 —— 系统已经是唯一状态源，用户从系统设置里改过之后
+ * 应用内显示不会与之打架。写入后系统会重建 Activity，采样服务不受影响。
+ */
+@Composable
+private fun LanguageCard() {
+    val context = LocalContext.current
+    val localeManager = remember(context) { context.getSystemService(LocaleManager::class.java) }
+    var currentTag by remember {
+        mutableStateOf(localeManager?.applicationLocales?.get(0)?.toLanguageTag())
+    }
+    val selected = when {
+        currentTag == null -> 0
+        currentTag.orEmpty().startsWith("zh") -> 1
+        else -> 2
+    }
+    MiuixCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(Icons.Rounded.Info)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.settings_language_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        SegmentedControl(
+            options = listOf(
+                stringResource(R.string.lang_system),
+                stringResource(R.string.lang_zh),
+                stringResource(R.string.lang_en),
+            ),
+            selectedIndex = selected,
+            onSelect = { index ->
+                val tag = when (index) {
+                    0 -> null
+                    1 -> "zh-CN"
+                    else -> "en"
+                }
+                currentTag = tag
+                localeManager?.applicationLocales = if (tag == null) {
+                    LocaleList.getEmptyLocaleList()
+                } else {
+                    LocaleList.forLanguageTags(tag)
+                }
+            },
+        )
     }
 }
 
@@ -2226,13 +2351,13 @@ private fun DetailPage(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     MiuixIconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text("记录详情", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.detail_title), style = MaterialTheme.typography.titleLarge)
                         detail.record?.let { record ->
                             Text(
-                                "${formatDate(record.startedAtMs)} · ${duration(record)}",
+                                "${formatDate(record.startedAtMs)} · ${durationText(record)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -2276,10 +2401,14 @@ private fun DetailPage(
                     item { AvgPowerSection(detail) }
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            SectionTitle("曲线", Modifier.weight(1f))
+                            SectionTitle(stringResource(R.string.detail_section_charts), Modifier.weight(1f))
                             if (detail.hasChartData) {
                                 MiuixTextButton(
-                                    text = if (editingOrder) "完成" else "排序",
+                                    text = if (editingOrder) {
+                                        stringResource(R.string.action_done)
+                                    } else {
+                                        stringResource(R.string.action_sort)
+                                    },
                                     onClick = { editingOrder = !editingOrder },
                                 )
                             }
@@ -2300,7 +2429,7 @@ private fun DetailPage(
                             )
                         }
                     }
-                    item { SectionTitle("分区筛选") }
+                    item { SectionTitle(stringResource(R.string.detail_section_filter)) }
                     item {
                         MiuixCard(contentPadding = 0.dp) {
                             detail.stats.forEachIndexed { index, stat ->
@@ -2317,7 +2446,7 @@ private fun DetailPage(
                                     )
                                     Text(stat.zoneName, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        "均值 ${uwToW(stat.avgPowerUw)}",
+                                        stringResource(R.string.detail_zone_avg_fmt, uwToW(stat.avgPowerUw)),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(end = 12.dp),
@@ -2344,7 +2473,7 @@ private fun DetailPage(
 @Composable
 private fun AvgPowerSection(detail: DetailUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle("平均功耗")
+        SectionTitle(stringResource(R.string.detail_section_avg_power))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // 与图表口径一致：SOC 之外按 CPU-L → CPU-M → GPU 的顺序铺开
             detail.stats.sortedBy { zoneDisplayRank(it.zoneName) }.forEach { stat ->
@@ -2353,7 +2482,7 @@ private fun AvgPowerSection(detail: DetailUiState) {
                 }
             }
             if (detail.avgDevicePowerUw > 0) {
-                SummaryTile("整机", uwToW(detail.avgDevicePowerUw))
+                SummaryTile(stringResource(R.string.detail_device), uwToW(detail.avgDevicePowerUw))
             }
         }
     }
@@ -2364,13 +2493,17 @@ private fun StatGrid(stats: List<ZoneStats>, sampleCount: Int, avgFps: Float) {
     val soc = stats.firstOrNull { it.zoneName.equals("SOC", true) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryTile("SOC 最高", uwToW(soc?.maxPowerUw ?: 0), Modifier.weight(1f))
-            SummaryTile("SOC 均值", uwToW(soc?.avgPowerUw ?: 0), Modifier.weight(1f))
-            SummaryTile("SOC 最低", uwToW(soc?.minPowerUw ?: 0), Modifier.weight(1f))
+            SummaryTile(stringResource(R.string.detail_soc_max), uwToW(soc?.maxPowerUw ?: 0), Modifier.weight(1f))
+            SummaryTile(stringResource(R.string.detail_soc_avg), uwToW(soc?.avgPowerUw ?: 0), Modifier.weight(1f))
+            SummaryTile(stringResource(R.string.detail_soc_min), uwToW(soc?.minPowerUw ?: 0), Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryTile("采样点", sampleCount.toString(), Modifier.weight(1f))
-            SummaryTile("平均帧率", if (avgFps > 0f) "%.1f".format(Locale.US, avgFps) else "--", Modifier.weight(1f))
+            SummaryTile(stringResource(R.string.detail_samples), sampleCount.toString(), Modifier.weight(1f))
+            SummaryTile(
+                stringResource(R.string.detail_avg_fps),
+                if (avgFps > 0f) "%.1f".format(Locale.US, avgFps) else "--",
+                Modifier.weight(1f),
+            )
         }
     }
 }
@@ -2431,7 +2564,7 @@ private fun ZonePowerChart(
             Spacer(Modifier.width(8.dp))
             Text(zoneName, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             Text(
-                "共 ${samples.size} 个采样点",
+                stringResource(R.string.chart_samples_total_fmt, samples.size),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
@@ -2570,10 +2703,11 @@ private fun uwToW(uw: Long): String = "%.2f W".format(Locale.US, uw / 1_000_000.
 private fun ujToJ(uj: Long): String = if (uj >= 1_000_000) "%.3f J".format(Locale.US, uj / 1_000_000.0) else "${uj} µJ"
 private fun formatDate(ms: Long): String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(ms))
 private fun timeLabel(ms: Long): String = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(ms))
-private fun duration(record: RecordEntity): String {
+@Composable
+private fun durationText(record: RecordEntity): String {
     val end = record.endedAtMs ?: System.currentTimeMillis()
     val seconds = ((end - record.startedAtMs) / 1000).coerceAtLeast(0)
-    return "${seconds / 60} 分 ${seconds % 60} 秒"
+    return stringResource(R.string.duration_fmt, seconds / 60, seconds % 60)
 }
 
 /** 应用内展示的项目主页。 */

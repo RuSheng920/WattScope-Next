@@ -10,6 +10,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.view.View
+import io.github.rusheng920.wattscope.R
 import kotlin.math.min
 
 /**
@@ -36,7 +37,9 @@ class GlassBubbleView(context: Context) : View(context) {
         set(value) {
             if (field == value) return
             field = value
-            contentDescription = if (value == Mode.RECORDING) "停止记录" else "开始记录"
+            contentDescription = context.getString(
+                if (value == Mode.RECORDING) R.string.action_stop_recording else R.string.action_start_recording,
+            )
             invalidate()
         }
 
@@ -86,7 +89,7 @@ class GlassBubbleView(context: Context) : View(context) {
     private val recordingAccent = Color.rgb(0x3D, 0xD6, 0x8C)
 
     init {
-        contentDescription = "开始记录"
+        contentDescription = context.getString(R.string.action_start_recording)
         isClickable = false
         setLayerType(LAYER_TYPE_HARDWARE, null)
     }

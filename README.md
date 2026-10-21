@@ -4,12 +4,14 @@
 
 <h1 align="center">WattScope Next</h1>
 
+<p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
+
 <p align="center"><b>高通平台 SoC 功耗遥测工具 · 重构版</b></p>
 
 <p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.3-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.4-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-watt.rusheng.top-F23A2A" alt="官网" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
@@ -63,6 +65,7 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 - 悬浮液态玻璃底栏（MIUIX `FloatingNavigationBar` + Backdrop 实时模糊 / 边缘折射 / 内阴影），浓度三档可调，可回落为贴底样式
 - 权限中心逐项展示授权状态并可直接跳转系统页面（root、悬浮窗、通知、使用情况访问、电池优化白名单），页面可见时每 1.5 s 自动复检
 - 预测性返回：Tab 内滑动返回与详情页手势均有进度联动
+- **中英双语**：界面提供简体中文与英文，默认跟随系统，可在「设置 → 外观 → 语言」固定为其中一种（Android 13+ 系统级 per-app language），切换即时生效
 
 ## 与 WattScope 1.0 的差异
 
@@ -149,6 +152,21 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 更新日志
+
+### v1.2.4
+
+本版是**国际化**版本：界面、README 与 Release 说明一次性补齐英文，中文仍是默认语言。
+
+#### 新增
+
+- **App 内中英双语**：219 条界面文案全部落入字符串资源，中文为默认、英文走 `values-en`；「设置 → 外观 → 语言」可在「跟随系统 / 简体中文 / English」间切换（Android 13+ 系统级 per-app language，切换即时生效，采样服务与进行中的记录都不受影响），系统设置的「应用 → 语言」里同样能找到本应用
+- **英文 README**：新增 `README.en.md`，与中文版顶部互链
+- **英文文档站**：补齐「权限与故障排查」英文页，站点中英文导航完整对齐
+
+#### 变更
+
+- **Release 说明改为双语**：正文同时给出中文与英文（`---` 分隔），由两份 README 的同名版本小节拼接生成
+- **运行时状态文案改为保存资源 id**：切换语言后首页状态行立即跟随，不再停留在旧语言
 
 ### v1.2.3
 
