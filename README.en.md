@@ -94,10 +94,11 @@ app/src/main/java/io/github/rusheng920/wattscope/
 │   ├── root/             libsu wrapper, shell escaping
 │   ├── qpt/              QPT zone enumeration, power/energy reads
 │   ├── auxiliary/        frequency, usage, temperature, GPU, DDR, device power
-│   └── fps/              SurfaceFlinger frame rate
+│   ├── fps/              SurfaceFlinger frame rate
+│   └── update/           GitHub Releases lookup and SemVer comparison
 ├── data/
 │   ├── local/            Room entities, DAOs, migrations
-│   └── repo/             MonitorRepository: sampling orchestration, persistence, export
+│   └── repo/             MonitorRepository: sampling orchestration, persistence, export; UpdateRepository: update checks and download
 ├── domain/               domain models and enums (intervals, themes, OSD metrics)
 ├── service/              foreground service, floating ball, OSD (View layer; overlay/ holds the drawn ball and HUD)
 └── ui/                   Compose + MIUIX screens and theme
@@ -145,7 +146,7 @@ Notes:
 2. On first launch follow the onboarding to grant overlay, notifications, usage access and the battery whitelist
 3. Tap **Start recording** on the dashboard, or use the floating ball to record the current foreground app; recording stops when you leave that app
 4. Open the **Records** tab to inspect curves and statistics, and export JSON / CSV
-5. **Settings → About** shows the version and links to this repository
+5. **Settings → About** shows the version, checks for updates (stable / beta channels) and links to the repository and the official website
 
 ## Download
 
@@ -154,6 +155,27 @@ See [Releases](../../releases).
 > The application ID is `io.github.rusheng920.wattscope`, independent from the original WattScope (`com.qpt.powermonitor`), so both can be installed side by side.
 
 ## Changelog
+
+### v1.3.0
+
+This release brings **in-app updates** to the About page and rounds out the project links.
+
+#### Added
+
+- **Automatic update checks**: with the switch on, every launch queries GitHub Releases for a newer version. When one is found, a dialog offers to download it and hands the APK to the system installer. Off by default — checking requires network access, so it stays your call
+- **Stable / Beta channels**: the Beta channel considers both pre-releases and stable builds and picks the highest version, so a beta that ranks below the stable version never wins (`1.2.6-beta.2` will not replace `1.2.6`)
+- **Official website link on the About page**: `https://watt.rusheng.top`
+- Release notes are taken from the GitHub release body and stripped of Markdown before display
+
+#### Changed
+
+- The About page is regrouped into Brand / Update / Project; the GitHub and website rows show the full URL including the `https://` prefix instead of a truncated repository name
+- Beta builds (`beta/` tags) are now also published as a **prerelease** Release — the in-app Beta channel reads the Releases API, while Actions artifacts are not anonymously downloadable
+
+#### Notes
+
+- Overwriting an install requires the "install unknown apps" permission; without it the app opens the matching system settings page
+- Update checks use the anonymous GitHub API, which is rate limited to 60 requests per hour; one request per launch stays far below that
 
 ### v1.2.5
 

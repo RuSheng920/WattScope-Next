@@ -3,10 +3,11 @@ run-name: beta · ${{ github.ref_name }}
 
 # 测试版构建：推 beta/* 标签即产出**已签名** APK，作为 Actions 资产上传。
 #
-# 与 release.yml 的区别只有一个 —— 不创建 GitHub Release：
-# - release.yml 由 `v*` 标签触发，会建正式 Release（用户可见的下载页）。
-# - 本工作流由 `beta/*` 标签触发，只把 APK 挂到 Actions run 的资产列表，
-#   不动 Releases 页面，适合内部测试版先行验证。
+# 与 release.yml 的差别在发布形态：
+# - release.yml 由 `v*` 标签触发，建正式 Release（应用内「正式版」通道取它）。
+# - 本工作流由 `beta/*` 标签触发，APK 既挂 Actions 资产，也建一个 **prerelease**
+#   Release —— 应用内「Beta 通道」走 Releases API，而 Actions 资产匿名不可下载。
+#   正式通道只认非 prerelease，测试版不会漏进正式更新。
 #
 # 为什么不用 `v*beta*` 这类标签名：release.yml 的触发条件是 `tags: ['v*']`，
 # 而 `v*` 会匹配任何以 v 开头的标签 —— 用 `v1.2.3-beta.1` 会同时触发两个工作流、
@@ -25,7 +26,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  # contents: write —— 测试版也要建 prerelease Release，应用内更新才能读到它
+  contents: write
 
 jobs:
   build:
@@ -165,3 +167,21 @@ jobs:
           path: WattScope-Next-v${{ steps.apk.outputs.version }}.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Actions 资产匿名不可下载，应用内「Beta 通道」无从获取安装包。
+      # 因此测试版额外建一个 **prerelease** Release：正式通道（只取非 prerelease）
+      # 看不到它，Beta 通道能看到并按版本号参与比较。
+      - name: Publish beta prerelease
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: WattScope Next v${{ steps.apk.outputs.version }} Beta
+          body: |
+            Beta build for early testing. Enable the Beta channel under
+            Settings → About to receive this version in-app.
+
+            测试版构建，仅供尝鲜；在「设置 → 关于 → 更新通道」选择 Beta 版即可收到。
+          files: WattScope-Next-v${{ steps.apk.outputs.version }}.apk
+          prerelease: true
+          fail_on_unmatched_files: true

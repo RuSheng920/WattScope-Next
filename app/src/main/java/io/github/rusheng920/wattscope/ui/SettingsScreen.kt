@@ -4,6 +4,7 @@ import android.app.LocaleManager
 import android.content.Intent
 import android.net.Uri
 import android.os.LocaleList
+import android.text.format.DateUtils
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,21 +16,28 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Refresh
@@ -37,11 +45,13 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +62,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -59,28 +71,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import io.github.rusheng920.wattscope.BuildConfig
 import io.github.rusheng920.wattscope.R
+import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
+import io.github.rusheng920.wattscope.domain.UpdateChannel
+import io.github.rusheng920.wattscope.domain.UpdateState
 import io.github.rusheng920.wattscope.ui.components.ActionRow
 import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixCard
 import io.github.rusheng920.wattscope.ui.components.MiuixSwitch
+import io.github.rusheng920.wattscope.ui.components.PillButton
 import io.github.rusheng920.wattscope.ui.components.PillTone
 import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.SegmentedControl
 import io.github.rusheng920.wattscope.ui.components.SelectChip
 import io.github.rusheng920.wattscope.ui.components.StatusPill
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val GITHUB_URL = "https://github.com/RuSheng920/WattScope-Next"
+private const val WEBSITE_URL = "https://watt.rusheng.top"
 
 /**
  * 设置二级页。
@@ -746,8 +764,26 @@ fun ServiceSettingsPage(
 
 // ---------- 关于 ----------
 
+/**
+ * 关于页：品牌、更新、项目链接。
+ *
+ * 更新分三块表达：**开关**（是否在启动时自动检查）、**通道**（是否考虑测试版）、
+ * **当前状态**（检查结果 / 下载进度）。三者并列而不是塞进一句话，是因为它们
+ * 回答的是三个不同的问题，混在一起用户没法判断「为什么没更新」。
+ */
 @Composable
-fun AboutSettingsPage(bottomPadding: Dp = 24.dp) {
+fun AboutSettingsPage(
+    autoUpdate: Boolean,
+    channel: UpdateChannel,
+    updateState: UpdateState,
+    pending: ReleaseInfo?,
+    lastCheckMs: Long,
+    onAutoUpdate: (Boolean) -> Unit,
+    onChannel: (UpdateChannel) -> Unit,
+    onCheckUpdate: () -> Unit,
+    onDownload: () -> Unit,
+    bottomPadding: Dp = 24.dp,
+) {
     val context = LocalContext.current
     SettingsPageColumn(bottomPadding) {
         item {
@@ -791,34 +827,439 @@ fun AboutSettingsPage(bottomPadding: Dp = 24.dp) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp),
-                    color = MiuixTheme.colorScheme.dividerLine,
+            }
+        }
+
+        // 更新独立成组：它是「会联网、会改动应用」的一组设置，和品牌信息挤在一张卡里
+        // 会让人以为只是展示内容。
+        item { SectionTitle(stringResource(R.string.about_section_update)) }
+        item {
+            MiuixCard(contentPadding = 0.dp) {
+                UpdateSettingsCard(
+                    autoUpdate = autoUpdate,
+                    channel = channel,
+                    updateState = updateState,
+                    lastCheckMs = lastCheckMs,
+                    onAutoUpdate = onAutoUpdate,
+                    onChannel = onChannel,
+                    onCheckUpdate = onCheckUpdate,
                 )
-                ActionRow(
+            }
+        }
+
+        // 有可用更新时单独一张卡：版本号、说明、下载进度都是会变化的内容，
+        // 混在上面的设置卡里会让「检查更新」那一行随下载进度不断跳动。
+        if (pending != null) {
+            item {
+                UpdateOfferCard(
+                    info = pending,
+                    state = updateState,
+                    onDownload = onDownload,
+                )
+            }
+        }
+
+        item { SectionTitle(stringResource(R.string.about_section_project)) }
+        item {
+            MiuixCard(contentPadding = 0.dp) {
+                LinkRow(
                     title = stringResource(R.string.about_github),
-                    // 去掉 github.com 前缀：这一行在 2:5:3 布局里只有约 168dp 宽，
-                    // 全写会在倒数第二个连字符处折行，把 "WattScope-Next" 甩到第二行。
-                    subtitle = "RuSheng920/WattScope-Next",
+                    url = GITHUB_URL,
                     icon = Icons.Rounded.Code,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    trailing = {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)))
-                        }
-                    },
+                    onClick = { openUrl(context, GITHUB_URL) },
+                )
+                LinkRow(
+                    title = stringResource(R.string.about_website),
+                    url = WEBSITE_URL,
+                    icon = Icons.Rounded.Language,
+                    onClick = { openUrl(context, WEBSITE_URL) },
+                    showDivider = true,
                 )
             }
         }
     }
 }
+
+/** 更新设置：自动检查开关 + 通道 + 手动检查。 */
+@Composable
+private fun UpdateSettingsCard(
+    autoUpdate: Boolean,
+    channel: UpdateChannel,
+    updateState: UpdateState,
+    lastCheckMs: Long,
+    onAutoUpdate: (Boolean) -> Unit,
+    onChannel: (UpdateChannel) -> Unit,
+    onCheckUpdate: () -> Unit,
+) {
+    val busy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading
+    ActionRow(
+        title = stringResource(R.string.about_auto_update),
+        subtitle = stringResource(R.string.about_auto_update_desc),
+        icon = Icons.Rounded.Refresh,
+        iconTint = MaterialTheme.colorScheme.primary,
+        trailing = { MiuixSwitch(checked = autoUpdate, onCheckedChange = onAutoUpdate) },
+    )
+    CardInnerDivider()
+    Column(
+        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(stringResource(R.string.about_update_channel), style = MaterialTheme.typography.titleSmall)
+        // 两项短标签，用等分分段控件；Beta 的取舍写在下面，不占用控件宽度
+        SegmentedControl(
+            options = UpdateChannel.entries.map { stringResource(it.labelRes) },
+            selectedIndex = UpdateChannel.entries.indexOf(channel),
+            onSelect = { onChannel(UpdateChannel.entries[it]) },
+        )
+        Text(
+            stringResource(R.string.about_update_channel_desc),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    CardInnerDivider()
+    ActionRow(
+        title = stringResource(R.string.about_check_update),
+        subtitle = updateStatusText(updateState, lastCheckMs),
+        icon = Icons.Rounded.SystemUpdate,
+        iconTint = MaterialTheme.colorScheme.secondary,
+        trailing = { UpdateStatusTrailing(updateState) },
+        onClick = { if (!busy) onCheckUpdate() },
+    )
+}
+
+/** 检查行的右侧：状态胶囊；空闲时用箭头明示可点。 */
+@Composable
+private fun UpdateStatusTrailing(state: UpdateState) {
+    when (state) {
+        UpdateState.Idle -> Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+
+        UpdateState.Checking -> StatusPill(stringResource(R.string.about_state_checking), PillTone.NEUTRAL)
+        UpdateState.UpToDate -> StatusPill(stringResource(R.string.about_state_up_to_date), PillTone.OK)
+        is UpdateState.Available -> StatusPill(stringResource(R.string.about_state_new), PillTone.WARN)
+        is UpdateState.Downloading -> StatusPill(stringResource(R.string.about_state_downloading), PillTone.NEUTRAL)
+        is UpdateState.ReadyToInstall -> StatusPill(stringResource(R.string.about_state_ready), PillTone.OK)
+        is UpdateState.Failed -> StatusPill(stringResource(R.string.about_state_failed), PillTone.ERROR)
+    }
+}
+
+/** 检查行副标题：当前状态优先，没有状态时退回到「上次检查」。 */
+@Composable
+private fun updateStatusText(state: UpdateState, lastCheckMs: Long): String = when (state) {
+    UpdateState.Idle -> if (lastCheckMs > 0) {
+        stringResource(R.string.about_last_check_fmt, rememberRelativeTime(lastCheckMs))
+    } else {
+        stringResource(R.string.about_check_never)
+    }
+
+    UpdateState.Checking -> stringResource(R.string.about_checking)
+    UpdateState.UpToDate -> stringResource(R.string.about_up_to_date)
+    is UpdateState.Available -> stringResource(R.string.about_new_version_fmt, state.info.versionName)
+    is UpdateState.Downloading ->
+        if (state.progress >= 0f) {
+            stringResource(R.string.about_downloading_fmt, (state.progress * 100).roundToInt())
+        } else {
+            stringResource(R.string.about_downloading_unknown)
+        }
+
+    is UpdateState.ReadyToInstall -> stringResource(R.string.about_ready_install)
+    is UpdateState.Failed -> stringResource(state.messageRes)
+}
+
+@Composable
+private fun rememberRelativeTime(atMs: Long): String {
+    val now = System.currentTimeMillis()
+    return remember(atMs) {
+        DateUtils.getRelativeTimeSpanString(atMs, now, DateUtils.MINUTE_IN_MILLIS).toString()
+    }
+}
+
+/** 可用更新卡：版本、通道徽标、更新说明与下载入口。 */
+@Composable
+private fun UpdateOfferCard(info: ReleaseInfo, state: UpdateState, onDownload: () -> Unit) {
+    MiuixCard(contentPadding = 0.dp) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(Icons.Rounded.NewReleases, MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            "v${info.versionName}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (info.isBeta) {
+                            StatusPill(stringResource(R.string.about_update_beta_badge), PillTone.WARN)
+                        }
+                    }
+                    val meta = listOfNotNull(
+                        info.apkSizeBytes.takeIf { it > 0 }?.let(::formatBytes),
+                        info.publishedAtMs.takeIf { it > 0 }?.let { formatDate(it) },
+                    )
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            meta.joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.about_update_notes),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // 整段展示，不截断：关于页本身是长列表，让用户一次看完全部更新内容
+            Text(
+                info.localizedNotes().ifBlank { stringResource(R.string.about_update_notes_empty) },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        CardInnerDivider()
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            when (state) {
+                is UpdateState.Downloading -> {
+                    UpdateProgressBar(state.progress)
+                    Text(
+                        updateStatusText(state, 0L),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                is UpdateState.ReadyToInstall -> Text(
+                    stringResource(R.string.about_ready_install),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                is UpdateState.Failed -> {
+                    Text(
+                        stringResource(state.messageRes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    PillButton(
+                        text = stringResource(R.string.about_update_retry),
+                        onClick = onDownload,
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 40.dp,
+                    )
+                }
+
+                else -> PillButton(
+                    text = stringResource(R.string.about_update_now),
+                    onClick = onDownload,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 40.dp,
+                )
+            }
+        }
+    }
+}
+
+/** 细进度条：轨道用 surfaceContainerHigh（暗色已在主题里提亮），与 chip 同色阶。 */
+@Composable
+private fun UpdateProgressBar(progress: Float) {
+    val fraction = if (progress >= 0f) progress.coerceIn(0f, 1f) else 0.35f
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(CircleShape)
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .clip(CircleShape)
+                .background(MiuixTheme.colorScheme.primary),
+        )
+    }
+}
+
+/**
+ * 「发现新版本」弹窗（启动自动检测命中时弹出）。
+ *
+ * 下载过程中保持打开并显示进度，安装包就绪即自动关闭 —— 系统安装器会接管屏幕，
+ * 留一个模态框在下面只会让人以为应用卡住了。
+ */
+@Composable
+fun UpdateAvailableDialog(
+    info: ReleaseInfo,
+    state: UpdateState,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    LaunchedEffect(state) {
+        if (state is UpdateState.ReadyToInstall) onDismiss()
+    }
+    val downloading = state is UpdateState.Downloading
+    Dialog(
+        // 下载中不允许点外部关闭：中断的是安装包下载，不是一次询问
+        onDismissRequest = { if (!downloading) onDismiss() },
+    ) {
+        MiuixCard(contentPadding = 20.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(Icons.Rounded.NewReleases, MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.about_update_dialog_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            "v${info.versionName}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (info.isBeta) {
+                            StatusPill(stringResource(R.string.about_update_beta_badge), PillTone.WARN)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            // 弹窗高度有限，说明区单独限高 + 内部滚动：既不截断内容，
+            // 也不会因为一次大版本更新把按钮顶出屏幕。
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    info.localizedNotes().ifBlank { stringResource(R.string.about_update_notes_empty) },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (state is UpdateState.Failed) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(state.messageRes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            when (state) {
+                is UpdateState.Downloading -> {
+                    UpdateProgressBar(state.progress)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        updateStatusText(state, 0L),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                else -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PillButton(
+                        text = stringResource(R.string.about_update_later),
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        filled = false,
+                        height = 40.dp,
+                    )
+                    PillButton(
+                        text = stringResource(R.string.about_update_now),
+                        onClick = onDownload,
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Release 正文由脚本拼成「中文 → `---` → English」，两份都塞进弹窗只会更长。
+ * 按当前界面语言只取对应的一半；只有单语（早期版本）时原样返回。
+ */
+@Composable
+private fun ReleaseInfo.localizedNotes(): String {
+    val notes = notes
+    if (notes.isEmpty()) return notes
+    val parts = notes.split(Regex("""(?m)^-{3,}[ \t]*$""")).map { it.trim() }.filter { it.isNotEmpty() }
+    if (parts.size < 2) return notes.trim()
+    val english = LocalConfiguration.current.locales[0]?.language == "en"
+    return if (english) parts.last() else parts.first()
+}
+
+/** 链接行：标题 + 完整 URL（可折行）+ 箭头。URL 不截断，用户能核对域名。 */
+@Composable
+private fun LinkRow(
+    title: String,
+    url: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    showDivider: Boolean = false,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        if (showDivider) CardInnerDivider()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(icon, MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    url,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
+    else -> "$bytes B"
+}
+
+private fun formatDate(ms: Long): String =
+    java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(ms))
 
 /**
  * 应用语言：写入系统级 Per-app language（API 33+）。

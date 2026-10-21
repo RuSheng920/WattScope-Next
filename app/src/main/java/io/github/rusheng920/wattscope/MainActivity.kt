@@ -52,6 +52,9 @@ class MainActivity : ComponentActivity() {
         startMonitorService()
 
         val repository = (application as QptApplication).repository
+        val updateRepository = (application as QptApplication).updateRepository
+        // 启动时自动检测更新：开关关闭时不联网（更新检查属于联网行为，需用户显式开启）
+        if (updateRepository.autoCheckEnabled) updateRepository.check()
         setContent {
             val themeMode by repository.themeModeFlow.collectAsState()
             val darkTheme = when (themeMode) {
@@ -60,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.DARK -> true
             }
             // 主题切换会重组整棵树：ViewModel 必须 remember，否则每次换肤都会重建采样订阅
-            val viewModel = remember { QptViewModel(repository) }
+            val viewModel = remember { QptViewModel(repository, updateRepository) }
             QptTheme(darkTheme = darkTheme) {
                 // 系统栏图标随主题反转：浅色模式用深色图标
                 val view = LocalView.current

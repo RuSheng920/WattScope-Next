@@ -12,6 +12,7 @@ import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.data.local.TempEntity
 import io.github.rusheng920.wattscope.data.repo.MonitorRepository
+import io.github.rusheng920.wattscope.data.repo.UpdateRepository
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.DetailChartSection
@@ -19,6 +20,9 @@ import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
+import io.github.rusheng920.wattscope.domain.UpdateChannel
+import io.github.rusheng920.wattscope.domain.UpdateState
+import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -35,7 +39,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
+class QptViewModel(
+    private val repository: MonitorRepository,
+    private val updateRepository: UpdateRepository,
+) : ViewModel() {
     val state = repository.state
     val records: StateFlow<List<RecordEntity>> = repository.records.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -72,6 +79,15 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     private val _fpsLayers = MutableStateFlow<List<String>>(emptyList())
     val fpsLayers: StateFlow<List<String>> = _fpsLayers.asStateFlow()
 
+    // ---------- 更新 ----------
+
+    val updateState: StateFlow<UpdateState> = updateRepository.state
+    val pendingUpdate: StateFlow<ReleaseInfo?> = updateRepository.pending
+    val autoUpdatePrompt: StateFlow<Boolean> = updateRepository.autoPrompt
+    val autoUpdateEnabled: StateFlow<Boolean> = updateRepository.autoCheckFlow
+    val updateChannel: StateFlow<UpdateChannel> = updateRepository.channelFlow
+    val lastUpdateCheckMs: StateFlow<Long> = updateRepository.lastCheckMs
+
     init {
         viewModelScope.launch { repository.refreshDeviceState() }
     }
@@ -107,6 +123,15 @@ class QptViewModel(private val repository: MonitorRepository) : ViewModel() {
     fun setDetailChartOrder(order: List<DetailChartSection>) = repository.setDetailChartOrder(order)
     fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
     fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }
+
+    /** 手动检查更新：与「自动检查」开关无关，随时可点。 */
+    fun checkUpdate() = updateRepository.check(manual = true)
+    fun setAutoUpdateEnabled(enabled: Boolean) = updateRepository.setAutoCheck(enabled)
+    fun setUpdateChannel(channel: UpdateChannel) {
+        updateRepository.channel = channel
+    }
+    fun downloadUpdate() = updateRepository.downloadAndInstall()
+    fun dismissUpdatePrompt() = updateRepository.dismissPrompt()
 
     /** 生成完整导出内容（JSON / CSV），供 SAF 保存到用户选择的位置。 */
     suspend fun exportRecord(recordId: Long, asJson: Boolean): String =

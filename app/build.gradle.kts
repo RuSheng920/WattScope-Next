@@ -22,8 +22,8 @@ android {
         minSdk = 33
         targetSdk = 36
         // 正式版：versionCode 需大于所有测试版（beta.3 = 11），保证 beta 用户可直接覆盖安装
-        versionCode = 14
-        versionName = "1.2.5"
+        versionCode = 15
+        versionName = "1.3.0"
     }
 
     signingConfigs {

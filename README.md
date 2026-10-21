@@ -92,10 +92,11 @@ app/src/main/java/io/github/rusheng920/wattscope/
 │   ├── root/             libsu 封装、shell 转义
 │   ├── qpt/              QPT zone 枚举与功率/能量读取
 │   ├── auxiliary/        频率、占用、温度、GPU、DDR、整机功耗
-│   └── fps/              SurfaceFlinger 帧率
+│   ├── fps/              SurfaceFlinger 帧率
+│   └── update/           GitHub Releases 版本查询与 SemVer 比较
 ├── data/
 │   ├── local/            Room 实体、DAO、迁移
-│   └── repo/             MonitorRepository：采样编排、落库、导出
+│   └── repo/             MonitorRepository：采样编排、落库、导出；UpdateRepository：更新检查与下载
 ├── domain/               领域模型与枚举（采样档位、主题、OSD 指标）
 ├── service/              前台服务、悬浮球、OSD（View 体系；overlay/ 下为自绘玻璃球与 HUD 面板）
 └── ui/                   Compose + MIUIX 页面与主题
@@ -143,7 +144,7 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 2. 首次启动按引导完成悬浮窗、通知、使用情况访问与电池优化白名单授权
 3. 仪表盘点击「开始记录」，或使用悬浮球记录当前前台应用；退出该应用自动停止
 4. 记录完成后进入「记录」Tab 查看曲线与统计，支持导出 JSON / CSV
-5. 「设置 → 关于」可查看版本号，并直接跳转本项目的 GitHub 主页
+5. 「设置 → 关于」可查看版本号、检查更新（正式版 / Beta 双通道），并跳转 GitHub 主页与官网
 
 ## 下载
 
@@ -152,6 +153,27 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 更新日志
+
+### v1.3.0
+
+本版把**应用内更新**做进「关于」页，并补齐项目入口。
+
+#### 新增
+
+- **自动检查更新**：开关打开后，每次启动向 GitHub Releases 查询新版本；发现更新会弹窗，可当场下载并调起系统安装器完成覆盖安装。默认关闭 —— 更新检查要联网，交给你决定
+- **正式版 / Beta 版双通道**：Beta 通道同时考虑测试版与正式版，按版本号取最高者；测试版版本号低于正式版时，更新到的仍是正式版（`1.2.6-beta.2` 不会盖掉 `1.2.6`）
+- **关于页新增官方网站入口**：`https://watt.rusheng.top`
+- 更新说明直接取 Release 正文，展示前清掉 Markdown 标记
+
+#### 变更
+
+- 关于页重排为「品牌 / 更新 / 项目」三组；GitHub 与官网条目显示完整 URL（含 `https://` 前缀），不再截断成仓库名
+- 测试版（`beta/` 标签）改为同时发布 **prerelease** Release —— 应用内 Beta 通道靠 Releases API 取包，而 Actions 产物匿名不可下载
+
+#### 说明
+
+- 覆盖安装需要「安装未知应用」权限，未授权时会直接跳到对应的系统设置页
+- 检查更新走匿名 GitHub API，受每小时 60 次的公共额度限制；正常使用（每次启动一次）远低于该上限
 
 ### v1.2.5
 

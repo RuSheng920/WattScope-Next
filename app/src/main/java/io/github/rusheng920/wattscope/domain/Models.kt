@@ -95,6 +95,17 @@ enum class BubbleSize(val key: String, @StringRes val labelRes: Int, val sizeDp:
     LARGE("large", R.string.bubble_large, 48),
 }
 
+/**
+ * 自动更新的发布通道。
+ *
+ * [BETA] 表示「候选集合包含测试版」，不是「只装测试版」：比较仍按版本号进行，
+ * 正式版号更大时更新的就是正式版（见 [io.github.rusheng920.wattscope.core.update.SemVer]）。
+ */
+enum class UpdateChannel(val key: String, @StringRes val labelRes: Int) {
+    STABLE("stable", R.string.update_channel_stable),
+    BETA("beta", R.string.update_channel_beta),
+}
+
 enum class SamplingInterval(val millis: Long, @StringRes val labelRes: Int) {
     Ms100(100, R.string.interval_100),
     Ms200(200, R.string.interval_200),

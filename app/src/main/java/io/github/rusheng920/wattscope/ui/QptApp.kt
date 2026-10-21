@@ -182,6 +182,12 @@ fun QptApp(
     val glassPauseRecording by viewModel.glassPauseRecording.collectAsState()
     val dualCellMode by viewModel.dualCellMode.collectAsState()
     val onboardingDone by viewModel.onboardingDone.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
+    val pendingUpdate by viewModel.pendingUpdate.collectAsState()
+    val autoUpdatePrompt by viewModel.autoUpdatePrompt.collectAsState()
+    val autoUpdateEnabled by viewModel.autoUpdateEnabled.collectAsState()
+    val updateChannel by viewModel.updateChannel.collectAsState()
+    val lastUpdateCheckMs by viewModel.lastUpdateCheckMs.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
     var detailId by remember { mutableStateOf<Long?>(null) }
@@ -450,7 +456,18 @@ fun QptApp(
                                 bottomPadding = pagePadding,
                             )
 
-                            SettingsPage.ABOUT -> AboutSettingsPage(bottomPadding = pagePadding)
+                            SettingsPage.ABOUT -> AboutSettingsPage(
+                                autoUpdate = autoUpdateEnabled,
+                                channel = updateChannel,
+                                updateState = updateState,
+                                pending = pendingUpdate,
+                                lastCheckMs = lastUpdateCheckMs,
+                                onAutoUpdate = viewModel::setAutoUpdateEnabled,
+                                onChannel = viewModel::setUpdateChannel,
+                                onCheckUpdate = viewModel::checkUpdate,
+                                onDownload = viewModel::downloadUpdate,
+                                bottomPadding = pagePadding,
+                            )
                         }
                     }
                 }
@@ -514,6 +531,18 @@ fun QptApp(
                 onOpenAutostart = onOpenMiuiAutostart,
                 onFinish = { viewModel.completeOnboarding(probe = true) },
                 onSkip = { viewModel.completeOnboarding(probe = false) },
+            )
+        }
+
+        // 启动自动检测命中新版本：弹一次模态框。手动检查不弹（结果就在关于页上）。
+        // 首次引导期间不弹：引导页本身是模态的，叠两层对话框会让人不知道先点哪。
+        val offer = pendingUpdate
+        if (onboardingDone && autoUpdatePrompt && offer != null) {
+            UpdateAvailableDialog(
+                info = offer,
+                state = updateState,
+                onDownload = viewModel::downloadUpdate,
+                onDismiss = viewModel::dismissUpdatePrompt,
             )
         }
     }
