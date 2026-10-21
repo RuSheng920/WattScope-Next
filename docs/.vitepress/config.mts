@@ -2,11 +2,51 @@ import { defineConfig } from 'vitepress'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// 版本号由部署流水线从主仓库 app/build.gradle.kts 同步写入（见 .github/workflows/deploy-docs.yml），
-// 导航栏因此永远指向当前发布版本，无需手改。
-const release = JSON.parse(
-  readFileSync(fileURLToPath(new URL('./release.json', import.meta.url)), 'utf-8')
-)
+// 版本号唯一来源：主仓库 app/build.gradle.kts 的 versionName。
+// release.json 由部署流水线写入（见 .github/workflows/deploy-docs.yml），只在拿不到 gradle 时兜底。
+//
+// 这里不直接读 release.json 的原因：下载页正文里的版本号曾经是手写死的文本，导航栏跟着
+// release.json 走所以一直是对的，正文却在 v1.2.4 / v1.2.5 两次发版后仍停在 v1.2.3。
+// 现在正文统一写 {{VERSION}} 占位，由下面的 markdown-it 插件在解析阶段替换。
+function resolveVersion(): string {
+  try {
+    const gradle = readFileSync(
+      fileURLToPath(new URL('../../app/build.gradle.kts', import.meta.url)),
+      'utf-8'
+    )
+    const matched = gradle.match(/versionName\s*=\s*"([^"]+)"/)
+    if (matched) return `v${matched[1]}`
+  } catch {
+    // 拿不到 gradle（例如只检出了 docs/）就退回流水线写入的 release.json
+  }
+  try {
+    const release = JSON.parse(
+      readFileSync(fileURLToPath(new URL('./release.json', import.meta.url)), 'utf-8')
+    )
+    if (release?.version) return String(release.version)
+  } catch {
+    // 两者都拿不到时退化为占位，不让构建中断
+  }
+  return 'v0.0.0'
+}
+
+const VERSION = resolveVersion()
+
+// 在 markdown 解析阶段替换 {{VERSION}}：此时还没进入 Vue 模板编译，
+// 所以代码块里的示例命令（`v-pre` 保护范围）也能替换到。
+const VERSION_TOKEN = '{{VERSION}}'
+
+function versionTokenPlugin(md: any) {
+  md.core.ruler.push('wattscope_version', (state: any) => {
+    const walk = (token: any) => {
+      if (typeof token.content === 'string' && token.content.includes(VERSION_TOKEN)) {
+        token.content = token.content.split(VERSION_TOKEN).join(VERSION)
+      }
+      if (Array.isArray(token.children)) token.children.forEach(walk)
+    }
+    state.tokens.forEach(walk)
+  })
+}
 
 const REPO = 'https://github.com/RuSheng920/WattScope-Next'
 
@@ -66,6 +106,10 @@ export default defineConfig({
     hostname: 'https://watt.rusheng.top',
   },
 
+  markdown: {
+    config: versionTokenPlugin,
+  },
+
   themeConfig: {
     logo: '/logo.svg',
     socialLinks: [{ icon: 'github', link: REPO }],
@@ -84,7 +128,7 @@ export default defineConfig({
           { text: '深入', link: '/power-reading', activeMatch: '^/(power-reading|power-review-recording)' },
           { text: '下载', link: '/download' },
           {
-            text: release.version,
+            text: VERSION,
             items: [
               { text: '更新日志', link: `${REPO}/releases` },
               { text: '问题反馈', link: `${REPO}/issues` },
@@ -123,7 +167,7 @@ export default defineConfig({
           { text: 'Guide', link: '/en/guide/what-is-wattscope', activeMatch: '/en/guide/' },
           { text: 'Download', link: '/en/download' },
           {
-            text: release.version,
+            text: VERSION,
             items: [
               { text: 'Changelog', link: `${REPO}/releases` },
               { text: 'Issues', link: `${REPO}/issues` },

@@ -6,7 +6,9 @@ Builds are hosted on GitHub Releases, signed with a fixed key.
 
 <div>
 
-### Current version <span class="dl-ver">v1.2.3</span>
+### Current version
+
+<p class="dl-ver dl-ver-line">{{VERSION}}</p>
 
 - Android 13 or newer
 - Qualcomm platform, rooted (KernelSU / Magisk / APatch)
@@ -36,7 +38,7 @@ Read [Install & setup](/en/guide/getting-started) for what each permission is fo
 ## Verify the signature
 
 ```bash
-apksigner verify --print-certs WattScope-Next-v1.2.3.apk
+apksigner verify --print-certs WattScope-Next-{{VERSION}}.apk
 ```
 
 Certificate SHA-256: `a118fa78…47141d`.
@@ -79,6 +81,15 @@ Betas share the release key, so they install over a stable build. Downgrading ma
 .dl-ver {
   font-family: var(--vp-font-family-mono);
   color: var(--vp-c-brand-1);
+}
+
+/* Version on its own line: the heading stays static so the anchor plugin
+   never writes the raw placeholder into the aria-label. */
+.dl-ver-line {
+  margin: -4px 0 14px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .dl-card ul {

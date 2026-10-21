@@ -6,7 +6,9 @@
 
 <div>
 
-### 当前版本 <span class="dl-ver">v1.2.3</span>
+### 当前版本
+
+<p class="dl-ver dl-ver-line">{{VERSION}}</p>
 
 - Android 13 及以上
 - 高通平台 + 已 root（KernelSU / Magisk / APatch）
@@ -44,7 +46,7 @@ a118fa78…47141d
 需要自行核验时：
 
 ```bash
-apksigner verify --print-certs WattScope-Next-v1.2.3.apk
+apksigner verify --print-certs WattScope-Next-{{VERSION}}.apk
 ```
 
 ::: warning 不要从第三方渠道安装
@@ -94,6 +96,14 @@ WattScope Next 需要 root 权限，从非官方渠道拿到的包一旦签名�
 .dl-ver {
   font-family: var(--vp-font-family-mono);
   color: var(--vp-c-brand-1);
+}
+
+/* 版本号独立成行：标题文本保持静态，避免锚点把占位符写进 aria-label */
+.dl-ver-line {
+  margin: -4px 0 14px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .dl-card ul {
