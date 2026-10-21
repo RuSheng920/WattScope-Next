@@ -1,4 +1,5 @@
 name: release
+run-name: release · ${{ github.ref_name }}
 
 # 推 v* 标签即发布：CI 编译 Release APK，用内置 GITHUB_TOKEN 创建 Release 并上传资产。
 # 不再需要本地打包，也不再需要 fine-grained PAT。

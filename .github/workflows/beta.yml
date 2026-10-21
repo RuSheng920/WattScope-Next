@@ -1,4 +1,5 @@
 name: beta
+run-name: beta · ${{ github.ref_name }}
 
 # 测试版构建：推 beta/* 标签即产出**已签名** APK，作为 Actions 资产上传。
 #

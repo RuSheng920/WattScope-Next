@@ -1,4 +1,5 @@
 name: deploy-docs
+run-name: docs · ${{ github.ref_name }}
 
 # 官网/文档站部署：推送 main 即构建 VitePress 并发布到 GitHub Pages。
 # 站点源目录就是 docs/（与项目文档同源）。
@@ -13,6 +14,16 @@ name: deploy-docs
 on:
   push:
     branches: [main]
+    # 只在这几类文件变动时重建站点。没有过滤的话，纯代码提交（甚至只改 README）
+    # 也会跑一次 npm ci + build + deploy，Actions 列表里全是无意义的 docs 记录。
+    # 必须保留 app/build.gradle.kts：导航栏版本号是从它的 versionName grep 出来的，
+    # 漏掉会导致发版后站点版本号滞后。本文件自身也在列，改工作流要能验证构建。
+    paths:
+      - 'docs/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
 permissions:

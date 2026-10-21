@@ -1,5 +1,10 @@
 name: ci
 
+# 不设 run-name 时，Actions 列表用 commit message 当标题 —— 发版时 main push 会同时
+# 命中 ci / deploy-docs，两条记录的标题一模一样，只能靠左侧小灰字分辨工作流。
+# 显式给前缀，列表里一眼可辨。
+run-name: ci · ${{ github.ref_name }}
+
 on:
   push:
     branches: [main]
