@@ -96,6 +96,30 @@
     <string name="duration_fmt">%1$dm %2$ds</string>
 
     <!-- ========== Settings ========== -->
+    <!-- Settings index & detail pages: each category gets its own page -->
+    <string name="settings_group_preferences">Preferences</string>
+    <string name="settings_group_support">Service &amp; support</string>
+    <string name="settings_group_language">Language</string>
+    <string name="settings_group_glass">Liquid glass</string>
+    <string name="settings_page_theme">Appearance &amp; theme</string>
+    <string name="settings_page_theme_desc">Theme mode, language and liquid glass</string>
+    <string name="settings_page_sampling">Sampling &amp; power</string>
+    <string name="settings_page_sampling_desc">Master switch, interval and dual-cell compensation</string>
+    <string name="settings_page_overlay">Overlay &amp; OSD</string>
+    <string name="settings_page_overlay_desc">Bubble, OSD and quick controls</string>
+    <string name="settings_page_fps_desc">Follow the foreground app, or pin a layer</string>
+    <string name="settings_page_service">Service &amp; permissions</string>
+    <string name="settings_page_service_desc">Permission center, foreground service and keep-alive</string>
+    <string name="settings_page_about">About</string>
+    <string name="settings_page_about_desc">Version info and project page</string>
+    <string name="settings_value_auto">Auto</string>
+    <string name="settings_value_manual">Manual</string>
+    <string name="settings_value_on">On</string>
+    <string name="settings_value_off">Off</string>
+    <string name="settings_section_calibration">Calibration</string>
+    <string name="settings_section_bubble">Bubble</string>
+    <string name="settings_section_osd">OSD overlay</string>
+    <string name="settings_section_permission">Permissions</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_language">Language / 语言</string>
     <string name="settings_language_desc">Follows the system by default; switching rebuilds the UI immediately, sampling is unaffected</string>
@@ -128,10 +152,11 @@
     <string name="settings_osd_metrics_desc">%1$d / %2$d selected, tap to toggle; tap the panel to cycle opacity</string>
     <string name="settings_section_fps">FPS source</string>
     <string name="settings_fps_auto">Follow foreground app</string>
-    <string name="settings_fps_auto_desc">Prefers SurfaceView layers, falls back to gfxinfo</string>
+    <string name="settings_fps_auto_desc">SurfaceView preferred</string>
     <string name="settings_scan_layers">Scan SurfaceFlinger layers</string>
     <string name="settings_rescan_layers">Rescan layers</string>
     <string name="settings_fps_manual_fmt">Manual layer (%1$d)</string>
+    <string name="settings_fps_stack_empty">Not scanned yet, tap to read layers</string>
     <string name="settings_fps_none">No layers found: make sure root is granted; a game must be in the foreground when scanning for its SurfaceView layer to appear.</string>
     <string name="settings_section_service">Service &amp; keep-alive</string>
     <string name="settings_permission_center">Permission center</string>
@@ -140,6 +165,7 @@
     <string name="settings_restart_service_desc">Restore it manually if the system cleared its notification</string>
     <string name="settings_battery">Battery optimization whitelist</string>
     <string name="settings_battery_added">Whitelisted</string>
+    <string name="settings_battery_missing">Not set</string>
     <string name="settings_battery_desc">Prevents sampling from freezing once the screen turns off</string>
     <string name="settings_miui_autostart">MIUI autostart</string>
     <string name="settings_miui_autostart_desc">Allowing autostart is recommended on HyperOS</string>

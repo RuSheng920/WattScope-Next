@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.4-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.5-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/Website-watt.rusheng.top-F23A2A" alt="Website" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/Docs-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
@@ -61,13 +61,13 @@ Verified on **Redmi K90 Pro Max (myron / SM8850 / Android 16)**.
 
 ### Interface
 
-Three main tabs: **Dashboard / Records / Settings**, with the permission center as a secondary page inside Settings.
+Three main tabs: **Dashboard / Records / Settings**. The settings tab is a category index — Appearance & theme, Sampling & power, Overlay & OSD, FPS source, Service & permissions and About each open as their own page, and the permission center is a secondary page reached from there.
 
 - Light, dark and follow-system themes, preference persisted
 - Floating liquid-glass bottom bar (MIUIX `FloatingNavigationBar` + Backdrop live blur / edge refraction / inner shadow), three intensity levels, can fall back to a docked bar
 - The permission center lists every grant state and jumps straight to the matching system page (root, overlay, notifications, usage access, battery whitelist), re-checking every 1.5 s while visible
 - Predictive back: both in-tab swipe-back and the detail page animate with gesture progress
-- **Chinese and English UI**, following the system by default and switchable in Settings → Appearance (Android 13+ per-app language)
+- **Chinese and English UI**, following the system by default and switchable in Settings → Appearance & theme (Android 13+ per-app language)
 
 ## Differences from WattScope 1.0
 
@@ -155,13 +155,36 @@ See [Releases](../../releases).
 
 ## Changelog
 
+### v1.2.5
+
+This release rebuilds the **Settings information architecture** and fixes a batch of readability issues found in an on-device walkthrough.
+
+#### Added
+
+- **Settings is now a category index plus six dedicated pages**: Appearance & theme, Sampling & power, Overlay & OSD, FPS source, Service & permissions and About each open as their own page. Each index row shows its current value on the right (e.g. "200 ms", "Dark", "Ready"), so you can read the state without entering the page
+- **Dedicated top bar and back navigation on secondary pages**: the navigation bar collapses and the top bar becomes a back arrow plus page title. The system back gesture now works in layers (secondary page → index → first tab), with the same gesture-following scale on both
+
+#### Changed
+
+- The three liquid-glass options (bar toggle, intensity, pause live blur while recording) now live under Appearance & theme, alongside theme mode and language
+- Sampling presets read `100 ms / 200 ms / 500 ms / 1000 ms`, so all four fit on one row on narrow screens
+- Battery optimisation status is shown as a status pill, matching the "Permission center → Ready" pattern
+- Mutually exclusive selectors are now chosen by rule: 2–3 short options use a segmented control, four or more (or long labels) use chips with wrapping
+
+#### Fixed
+
+- **Card text was nearly unreadable in dark mode**: text without an explicit colour fell back to Material's default black, about 1.1:1 contrast on a `#242424` card. `MiuixCard` now injects the content foreground colour, measuring around 11:1 and meeting WCAG AA
+- "Scan layers" on the FPS page is a proper action row with a chevron instead of text that did not look tappable
+- The fourth sampling preset is no longer pushed outside the viewport on narrow screens
+- The About page uses the red-and-white flame icon again, and the GitHub row no longer wraps the repository name onto a second line
+
 ### v1.2.4
 
 An **internationalisation** release: the UI, README and release notes all gain English, with Chinese remaining the default.
 
 #### Added
 
-- **Chinese and English UI**: all 219 UI strings now live in string resources — Chinese as the default, English in `values-en`. Settings → Appearance → Language switches between System / 简体中文 / English (Android 13+ per-app language; the switch applies immediately and neither the sampling service nor an in-progress recording is affected). The app also appears under system Settings → Apps → Language
+- **Chinese and English UI**: all 219 UI strings now live in string resources — Chinese as the default, English in `values-en`. Settings → Appearance & theme → Language switches between System / 简体中文 / English (Android 13+ per-app language; the switch applies immediately and neither the sampling service nor an in-progress recording is affected). The app also appears under system Settings → Apps → Language
 - **English README**: new `README.en.md`, cross-linked from the Chinese one
 - **English docs site**: added the missing "Permissions & troubleshooting" page; Chinese and English navigation are now complete
 

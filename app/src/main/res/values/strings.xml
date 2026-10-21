@@ -94,6 +94,30 @@
     <string name="duration_fmt">%1$d 分 %2$d 秒</string>
 
     <!-- ========== 设置 ========== -->
+    <!-- 设置索引页与二级页：分级后每一类设置独占一页，标题即上下文 -->
+    <string name="settings_group_preferences">偏好设置</string>
+    <string name="settings_group_support">服务与支持</string>
+    <string name="settings_group_language">语言</string>
+    <string name="settings_group_glass">液态玻璃</string>
+    <string name="settings_page_theme">外观与主题</string>
+    <string name="settings_page_theme_desc">主题模式、语言与液态玻璃</string>
+    <string name="settings_page_sampling">采样与功耗</string>
+    <string name="settings_page_sampling_desc">总开关、采样间隔与双电芯补偿</string>
+    <string name="settings_page_overlay">悬浮窗与 OSD</string>
+    <string name="settings_page_overlay_desc">悬浮球、OSD 与快捷控制</string>
+    <string name="settings_page_fps_desc">自动跟随前台应用，或手动指定图层</string>
+    <string name="settings_page_service">服务与权限</string>
+    <string name="settings_page_service_desc">权限中心、前台服务与保活</string>
+    <string name="settings_page_about">关于</string>
+    <string name="settings_page_about_desc">版本信息与项目主页</string>
+    <string name="settings_value_auto">自动</string>
+    <string name="settings_value_manual">手动</string>
+    <string name="settings_value_on">已开启</string>
+    <string name="settings_value_off">已关闭</string>
+    <string name="settings_section_calibration">校准</string>
+    <string name="settings_section_bubble">悬浮球</string>
+    <string name="settings_section_osd">OSD 浮层</string>
+    <string name="settings_section_permission">权限</string>
     <string name="settings_section_appearance">外观</string>
     <string name="settings_language">语言 / Language</string>
     <string name="settings_language_desc">默认跟随系统；切换后界面立即重建，采样不受影响</string>
@@ -126,10 +150,11 @@
     <string name="settings_osd_metrics_desc">已选 %1$d / %2$d 项，轻点切换；面板上轻点可循环透明度</string>
     <string name="settings_section_fps">FPS 数据源</string>
     <string name="settings_fps_auto">自动跟随前台应用</string>
-    <string name="settings_fps_auto_desc">优先 SurfaceView 图层，失败回退 gfxinfo</string>
+    <string name="settings_fps_auto_desc">SurfaceView 优先，失败回退</string>
     <string name="settings_scan_layers">扫描 SurfaceFlinger 图层</string>
     <string name="settings_rescan_layers">重新扫描图层</string>
     <string name="settings_fps_manual_fmt">手动指定图层（%1$d）</string>
+    <string name="settings_fps_stack_empty">尚未扫描，点此读取当前图层</string>
     <string name="settings_fps_none">未扫描到图层：确认已授予 root；游戏需在前台运行时扫描才能看到其 SurfaceView 层。</string>
     <string name="settings_section_service">服务与保活</string>
     <string name="settings_permission_center">权限中心</string>
@@ -138,6 +163,7 @@
     <string name="settings_restart_service_desc">通知被系统清理后可手动恢复</string>
     <string name="settings_battery">电池优化白名单</string>
     <string name="settings_battery_added">已加入白名单</string>
+    <string name="settings_battery_missing">未加入</string>
     <string name="settings_battery_desc">避免息屏后停止采样</string>
     <string name="settings_miui_autostart">MIUI 自启动管理</string>
     <string name="settings_miui_autostart_desc">HyperOS 建议允许自启动</string>
@@ -217,10 +243,10 @@
     <string name="bubble_mini">迷你</string>
     <string name="bubble_standard">标准</string>
     <string name="bubble_large">大</string>
-    <string name="interval_100">100 毫秒</string>
-    <string name="interval_200">200 毫秒</string>
-    <string name="interval_500">500 毫秒</string>
-    <string name="interval_1000">1000 毫秒</string>
+    <string name="interval_100">100 ms</string>
+    <string name="interval_200">200 ms</string>
+    <string name="interval_500">500 ms</string>
+    <string name="interval_1000">1000 ms</string>
     <string name="osd_metric_soc_power">SOC</string>
     <string name="osd_metric_cpu_l">CPU-L</string>
     <string name="osd_metric_cpu_m">CPU-M</string>

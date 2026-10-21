@@ -18,9 +18,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,24 +105,30 @@ fun MiuixCard(
         color = containerColor ?: MiuixTheme.colorScheme.surfaceContainer,
     )
     val inside = PaddingValues(contentPadding)
-    if (onClick != null) {
-        Card(
-            modifier = modifier.fillMaxWidth(),
-            cornerRadius = 16.dp,
-            insideMargin = inside,
-            colors = colors,
-            pressFeedbackType = PressFeedbackType.Sink,
-            onClick = onClick,
-            content = content,
-        )
-    } else {
-        Card(
-            modifier = modifier.fillMaxWidth(),
-            cornerRadius = 16.dp,
-            insideMargin = inside,
-            colors = colors,
-            content = content,
-        )
+    // 卡片内的 Material Text 若没显式给 color，会落到 LocalContentColor 的默认值（黑）。
+    // 深色卡片上黑字几乎读不出来 —— 实测「语言 / Language」标题在 #242424 上只剩 1.1:1。
+    // 在这里统一注入 MIUIX 的 onSurface，让「放进卡片就是正确颜色」成为组件的默认行为，
+    // 而不是指望每个调用点自己记得补 color。
+    CompositionLocalProvider(LocalContentColor provides MiuixTheme.colorScheme.onSurface) {
+        if (onClick != null) {
+            Card(
+                modifier = modifier.fillMaxWidth(),
+                cornerRadius = 16.dp,
+                insideMargin = inside,
+                colors = colors,
+                pressFeedbackType = PressFeedbackType.Sink,
+                onClick = onClick,
+                content = content,
+            )
+        } else {
+            Card(
+                modifier = modifier.fillMaxWidth(),
+                cornerRadius = 16.dp,
+                insideMargin = inside,
+                colors = colors,
+                content = content,
+            )
+        }
     }
 }
 

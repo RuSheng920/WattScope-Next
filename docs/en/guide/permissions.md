@@ -50,7 +50,7 @@ WattScope Next needs five permissions. Missing one never crashes the app — the
 
 ## Permission center
 
-Settings → Permission center is a per-item list of grant states:
+Settings → Service & permissions → Permission center is a per-item list of grant states:
 
 - Every row shows "Granted / Not granted" with a button that jumps straight to the matching system page
 - **While the page is visible it re-checks every 1.5 s**, so anything you change in system settings shows up when you come back
@@ -67,7 +67,7 @@ Settings → Permission center is a per-item list of grant states:
 | Recording stops after one second | The target app has just gained focus and its foreground state is not stable yet. A 5 s grace window covers this; if it still happens, open an issue with your device model |
 | Gaps in the curve after the screen turns off | Notifications or the battery whitelist is missing |
 | FPS stays 0 in a game | SurfaceFlinger does not report that surface and the fallback fails too; rendering paths differ a lot between games |
-| Device power reads about half the measured value | A dual-cell phone reports only one rail; enable **Dual-cell device** in Settings → Sampling |
+| Device power reads about half the measured value | A dual-cell phone reports only one rail; enable **Dual-cell device** in Settings → Sampling & power → Calibration |
 
 ## Still not right?
 

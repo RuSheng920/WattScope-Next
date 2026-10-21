@@ -11,7 +11,7 @@
 <p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.4-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.5-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-watt.rusheng.top-F23A2A" alt="官网" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
@@ -59,13 +59,13 @@ WattScope-Next 是 [WattScope](https://github.com/Alita23333/WattScope) 的重�
 
 ### 界面
 
-三个主 Tab：**仪表盘 / 记录 / 设置**，权限中心作为设置内的二级页独立进入。
+三个主 Tab：**仪表盘 / 记录 / 设置**。设置首页是分类索引 —— 外观与主题、采样与功耗、悬浮窗与 OSD、FPS 数据源、服务与权限、关于各自独立成页，权限中心作为二级页从这里进入。
 
 - 深色、浅色、跟随系统三态主题，偏好持久化
 - 悬浮液态玻璃底栏（MIUIX `FloatingNavigationBar` + Backdrop 实时模糊 / 边缘折射 / 内阴影），浓度三档可调，可回落为贴底样式
 - 权限中心逐项展示授权状态并可直接跳转系统页面（root、悬浮窗、通知、使用情况访问、电池优化白名单），页面可见时每 1.5 s 自动复检
 - 预测性返回：Tab 内滑动返回与详情页手势均有进度联动
-- **中英双语**：界面提供简体中文与英文，默认跟随系统，可在「设置 → 外观 → 语言」固定为其中一种（Android 13+ 系统级 per-app language），切换即时生效
+- **中英双语**：界面提供简体中文与英文，默认跟随系统，可在「设置 → 外观与主题 → 语言」固定为其中一种（Android 13+ 系统级 per-app language），切换即时生效
 
 ## 与 WattScope 1.0 的差异
 
@@ -153,13 +153,36 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 
 ## 更新日志
 
+### v1.2.5
+
+本版重做**设置页的信息架构**，并修掉一批真机走查发现的可读性问题。
+
+#### 新增
+
+- **设置页拆成「分类索引 + 六个独立页」**：外观与主题、采样与功耗、悬浮窗与 OSD、FPS 数据源、服务与权限、关于各自成页；索引行右侧直接显示当前值（如「200 ms」「深色」「就绪」），不进页面就能看到状态
+- **二级页独立顶栏与返回**：进入二级页后底栏收起、顶栏变为「返回箭头 + 页标题」；系统返回手势分层生效（二级页 → 索引 → 首页），两层都带跟手缩放
+
+#### 变更
+
+- 液态玻璃三项（底栏开关、浓度、记录时暂停实时模糊）归入「外观与主题」，与主题模式、语言同页
+- 采样档位文案改为 `100 ms / 200 ms / 500 ms / 1000 ms` 写法，四档在窄屏一行排满
+- 电池优化白名单的状态改用状态胶囊表达，与「权限中心 → 就绪」同形
+- 互斥单选控件统一选型：2–3 项短标签用分段控件，4 项及以上或长标签用 chip + 自动换行
+
+#### 修复
+
+- **深色模式下卡片内文字几乎不可读**：未显式设色的文字会落到 Material 默认黑色，在 `#242424` 卡片上对比度仅约 1.1:1。现由 `MiuixCard` 统一注入内容前景色，实测约 11:1，达到 WCAG AA
+- FPS 数据源页的「扫描图层」改为带箭头的操作行，不再是一段看不出能点的文字
+- 采样间隔的第四档在窄屏不再被推出可视区
+- 关于页品牌位换回红白燃焰图标，GitHub 条目不再把仓库名挤到第二行
+
 ### v1.2.4
 
 本版是**国际化**版本：界面、README 与 Release 说明一次性补齐英文，中文仍是默认语言。
 
 #### 新增
 
-- **App 内中英双语**：219 条界面文案全部落入字符串资源，中文为默认、英文走 `values-en`；「设置 → 外观 → 语言」可在「跟随系统 / 简体中文 / English」间切换（Android 13+ 系统级 per-app language，切换即时生效，采样服务与进行中的记录都不受影响），系统设置的「应用 → 语言」里同样能找到本应用
+- **App 内中英双语**：219 条界面文案全部落入字符串资源，中文为默认、英文走 `values-en`；「设置 → 外观与主题 → 语言」可在「跟随系统 / 简体中文 / English」间切换（Android 13+ 系统级 per-app language，切换即时生效，采样服务与进行中的记录都不受影响），系统设置的「应用 → 语言」里同样能找到本应用
 - **英文 README**：新增 `README.en.md`，与中文版顶部互链
 - **英文文档站**：补齐「权限与故障排查」英文页，站点中英文导航完整对齐
 

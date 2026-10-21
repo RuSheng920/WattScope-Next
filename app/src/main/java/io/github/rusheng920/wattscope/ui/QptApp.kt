@@ -1,9 +1,5 @@
 package io.github.rusheng920.wattscope.ui
 
-import android.app.LocaleManager
-import android.content.Intent
-import android.net.Uri
-import android.os.LocaleList
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -12,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +26,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -108,11 +102,7 @@ import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
-import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.DetailChartSection
-import io.github.rusheng920.wattscope.domain.GlassIntensity
-import io.github.rusheng920.wattscope.domain.OsdMetric
-import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.StatusText
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
@@ -141,6 +131,7 @@ import top.yukonga.miuix.kmp.basic.Checkbox as MiuixCheckbox
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -195,6 +186,8 @@ fun QptApp(
     var tab by remember { mutableIntStateOf(0) }
     var detailId by remember { mutableStateOf<Long?>(null) }
     var permissionsOpen by remember { mutableStateOf(false) }
+    // 设置二级页：null = 停在设置索引页
+    var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
     var tabBackProgress by remember { mutableFloatStateOf(0f) }
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
@@ -235,8 +228,24 @@ fun QptApp(
     // HyperOS 大标题随列表滚动折叠：同一 ScrollBehavior 同时挂到 TopAppBar 与内容区
     val topBarScroll = MiuixScrollBehavior()
 
-    // 预测性返回：非首页时按住返回键，内容随手势缩放，松手完成返回
-    PredictiveBackHandler(enabled = detailId == null && !permissionsOpen && tab != 0) { progress ->
+    // 换 Tab / 进出设置二级页时列表都是新的（滚动位置归零），
+    // 但折叠偏移属于 ScrollBehavior 而非列表，必须手动复位，否则新页面会顶着「已收起」的标题。
+    LaunchedEffect(tab, settingsPage) {
+        topBarScroll.state.heightOffset = 0f
+    }
+
+    // 预测性返回：二级页 → 设置索引页 → 首页。两级都要有各自的跟手动画。
+    PredictiveBackHandler(enabled = detailId == null && !permissionsOpen && settingsPage != null) { progress ->
+        try {
+            progress.collect { tabBackProgress = it.progress }
+        } finally {
+            tabBackProgress = 0f
+        }
+        settingsPage = null
+    }
+    PredictiveBackHandler(
+        enabled = detailId == null && !permissionsOpen && settingsPage == null && tab != 0,
+    ) { progress ->
         try {
             progress.collect { tabBackProgress = it.progress }
         } finally {
@@ -289,16 +298,40 @@ fun QptApp(
                         },
                     )
 
-                    else -> TopAppBar(
-                        title = stringResource(R.string.nav_settings),
-                        largeTitle = stringResource(R.string.nav_settings),
-                        scrollBehavior = topBarScroll,
-                    )
+                    // 设置二级页：返回箭头 + 页标题。大标题折叠行为与一级页一致，
+                    // 顶栏高度不变，进出二级页时内容不会上下跳一截。
+                    else -> {
+                        val page = settingsPage
+                        if (page == null) {
+                            TopAppBar(
+                                title = stringResource(R.string.nav_settings),
+                                largeTitle = stringResource(R.string.nav_settings),
+                                scrollBehavior = topBarScroll,
+                            )
+                        } else {
+                            // 二级页用小标题：不参与列表折叠。
+                            // 复用一级页的 scrollBehavior 会把「已收起的」大标题偏移带到新列表上，
+                            // 刚进页面就看不到标题，直到滚动一下才恢复。
+                            SmallTopAppBar(
+                                title = stringResource(page.titleRes),
+                                navigationIcon = {
+                                    MiuixIconButton(onClick = { settingsPage = null }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = stringResource(R.string.action_back),
+                                            tint = MiuixTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(21.dp),
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             },
             bottomBar = {
-                // 关闭悬浮底栏时回落为贴底的 MIUIX 导航栏
-                if (!glassBottomBar) {
+                // 二级页独占整屏：底部导航收起，返回靠顶栏箭头与系统返回手势
+                if (!glassBottomBar && settingsPage == null) {
                     MiuixBottomBar(
                         items = listOf(
                             BottomItem(stringResource(R.string.nav_dashboard), Icons.Rounded.Speed),
@@ -348,48 +381,84 @@ fun QptApp(
                         bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                     )
 
-                    else -> SettingsScreen(
-                        enabled = state.qptEnabled,
-                        interval = state.interval,
-                        themeMode = themeMode,
-                        bubbleEnabled = bubbleEnabled,
-                        bubbleSize = bubbleSize,
-                        bubbleSnapToEdge = bubbleSnapToEdge,
-                        osdEnabled = osdEnabled,
-                        osdMetrics = osdMetrics,
-                        permissions = permissions,
-                        glassBottomBar = glassBottomBar,
-                        glassIntensity = glassIntensity,
-                        glassPauseRecording = glassPauseRecording,
-                        dualCellMode = dualCellMode,
-                        bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
-                        onToggleEnabled = viewModel::setEnabled,
-                        onInterval = viewModel::setInterval,
-                        onThemeMode = viewModel::setThemeMode,
-                        onGlassBottomBar = viewModel::setGlassBottomBar,
-                        onGlassIntensity = viewModel::setGlassIntensity,
-                        onGlassPauseRecording = viewModel::setGlassPauseRecording,
-                        onDualCellMode = viewModel::setDualCellMode,
-                        onStartService = onStartService,
-                        onRequestBatteryWhitelist = onRequestBatteryWhitelist,
-                        onOpenMiuiAutostart = onOpenMiuiAutostart,
-                        onToggleBubble = onToggleBubble,
-                        onBubbleSize = viewModel::setBubbleSize,
-                        onBubbleSnapToEdge = viewModel::setBubbleSnapToEdge,
-                        onToggleOsd = viewModel::setOsdEnabled,
-                        onOsdMetricsChange = viewModel::setOsdMetrics,
-                        fpsLayer = fpsLayer,
-                        fpsLayers = fpsLayers,
-                        onSelectFpsLayer = viewModel::setFpsLayer,
-                        onLoadFpsLayers = viewModel::loadFpsLayers,
-                        onOpenPermissions = { permissionsOpen = true },
-                    )
+                    else -> {
+                        // 设置：索引页 → 六个独立二级页。二级页无底栏，所以底部留白收窄。
+                        val page = settingsPage
+                        val pagePadding = if (glassBottomBar && page == null) 104.dp else 24.dp
+                        when (page) {
+                            null -> SettingsHub(
+                                themeMode = themeMode,
+                                interval = state.interval,
+                                bubbleEnabled = bubbleEnabled,
+                                osdEnabled = osdEnabled,
+                                fpsLayer = fpsLayer,
+                                permissions = permissions,
+                                onOpen = { settingsPage = it },
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.THEME -> ThemeSettingsPage(
+                                themeMode = themeMode,
+                                glassBottomBar = glassBottomBar,
+                                glassIntensity = glassIntensity,
+                                glassPauseRecording = glassPauseRecording,
+                                onThemeMode = viewModel::setThemeMode,
+                                onGlassBottomBar = viewModel::setGlassBottomBar,
+                                onGlassIntensity = viewModel::setGlassIntensity,
+                                onGlassPauseRecording = viewModel::setGlassPauseRecording,
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.SAMPLING -> SamplingSettingsPage(
+                                enabled = state.qptEnabled,
+                                interval = state.interval,
+                                dualCellMode = dualCellMode,
+                                onToggleEnabled = viewModel::setEnabled,
+                                onInterval = viewModel::setInterval,
+                                onDualCellMode = viewModel::setDualCellMode,
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.OVERLAY -> OverlaySettingsPage(
+                                bubbleEnabled = bubbleEnabled,
+                                bubbleSize = bubbleSize,
+                                bubbleSnapToEdge = bubbleSnapToEdge,
+                                osdEnabled = osdEnabled,
+                                osdMetrics = osdMetrics,
+                                onToggleBubble = onToggleBubble,
+                                onBubbleSize = viewModel::setBubbleSize,
+                                onBubbleSnapToEdge = viewModel::setBubbleSnapToEdge,
+                                onToggleOsd = viewModel::setOsdEnabled,
+                                onOsdMetricsChange = viewModel::setOsdMetrics,
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.FPS -> FpsSettingsPage(
+                                fpsLayer = fpsLayer,
+                                fpsLayers = fpsLayers,
+                                onSelectFpsLayer = viewModel::setFpsLayer,
+                                onLoadFpsLayers = viewModel::loadFpsLayers,
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.SERVICE -> ServiceSettingsPage(
+                                permissions = permissions,
+                                onOpenPermissions = { permissionsOpen = true },
+                                onStartService = onStartService,
+                                onRequestBatteryWhitelist = onRequestBatteryWhitelist,
+                                onOpenMiuiAutostart = onOpenMiuiAutostart,
+                                bottomPadding = pagePadding,
+                            )
+
+                            SettingsPage.ABOUT -> AboutSettingsPage(bottomPadding = pagePadding)
+                        }
+                    }
                 }
             }
         }
 
         // 悬浮玻璃底栏：覆盖在内容之上，列表滚动时会从玻璃后面穿过
-        if (glassBottomBar) {
+        if (glassBottomBar && settingsPage == null) {
             // 外层 Box 负责贴底对齐：FloatingNavigationBar 的 modifier 落在内部 Row 上
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 FloatingGlassBottomBar(
@@ -1776,529 +1845,6 @@ private fun History(
 }
 }
 
-// ---------- 设置 ----------
-
-@Composable
-private fun SettingsScreen(
-    enabled: Boolean,
-    interval: SamplingInterval,
-    themeMode: ThemeMode,
-    bubbleEnabled: Boolean,
-    bubbleSize: BubbleSize,
-    bubbleSnapToEdge: Boolean,
-    osdEnabled: Boolean,
-    osdMetrics: List<OsdMetric>,
-    permissions: AppPermissions,
-    glassBottomBar: Boolean,
-    glassIntensity: GlassIntensity,
-    glassPauseRecording: Boolean,
-    dualCellMode: Boolean,
-    bottomPadding: Dp = 24.dp,
-    onToggleEnabled: (Boolean) -> Unit,
-    onInterval: (SamplingInterval) -> Unit,
-    onThemeMode: (ThemeMode) -> Unit,
-    onGlassBottomBar: (Boolean) -> Unit,
-    onGlassIntensity: (GlassIntensity) -> Unit,
-    onGlassPauseRecording: (Boolean) -> Unit,
-    onDualCellMode: (Boolean) -> Unit,
-    onStartService: () -> Unit,
-    onRequestBatteryWhitelist: () -> Unit,
-    onOpenMiuiAutostart: () -> Unit,
-    onToggleBubble: (Boolean) -> Unit,
-    onBubbleSize: (BubbleSize) -> Unit,
-    onBubbleSnapToEdge: (Boolean) -> Unit,
-    onToggleOsd: (Boolean) -> Unit,
-    onOsdMetricsChange: (List<OsdMetric>) -> Unit,
-    fpsLayer: String?,
-    fpsLayers: List<String>,
-    onSelectFpsLayer: (String?) -> Unit,
-    onLoadFpsLayers: () -> Unit,
-    onOpenPermissions: () -> Unit,
-) {
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { SectionTitle(stringResource(R.string.settings_section_appearance)) }
-        item { LanguageCard() }
-        item {
-            MiuixCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(Icons.Rounded.Palette)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            stringResource(R.string.settings_theme_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                SegmentedControl(
-                    options = ThemeMode.entries.map { stringResource(it.labelRes) },
-                    selectedIndex = ThemeMode.entries.indexOf(themeMode),
-                    onSelect = { onThemeMode(ThemeMode.entries[it]) },
-                )
-            }
-        }
-        item {
-            MiuixCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(Icons.Rounded.Layers)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.settings_glass_bar), style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            stringResource(R.string.settings_glass_bar_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    MiuixSwitch(checked = glassBottomBar, onCheckedChange = onGlassBottomBar)
-                }
-                if (glassBottomBar) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBadge(Icons.Rounded.Opacity, MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(14.dp))
-                        Text(stringResource(R.string.settings_glass_intensity), style = MaterialTheme.typography.titleSmall)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    SegmentedControl(
-                        options = GlassIntensity.entries.map { stringResource(it.labelRes) },
-                        selectedIndex = GlassIntensity.entries.indexOf(glassIntensity),
-                        onSelect = { onGlassIntensity(GlassIntensity.entries[it]) },
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.settings_glass_intensity_desc),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBadge(Icons.Rounded.Timer, MaterialTheme.colorScheme.tertiary)
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_glass_pause), style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                stringResource(R.string.settings_glass_pause_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        MiuixSwitch(checked = glassPauseRecording, onCheckedChange = onGlassPauseRecording)
-                    }
-                }
-            }
-        }
-
-        item { SectionTitle(stringResource(R.string.settings_section_sampling)) }
-        item {
-            MiuixCard(contentPadding = 0.dp) {
-                ActionRow(
-                    title = stringResource(R.string.settings_qpt_switch),
-                    subtitle = if (enabled) {
-                        stringResource(R.string.settings_qpt_on_desc)
-                    } else {
-                        stringResource(R.string.settings_qpt_off_desc)
-                    },
-                    icon = Icons.Rounded.Speed,
-                    trailing = { MiuixSwitch(checked = enabled, onCheckedChange = onToggleEnabled) },
-                )
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .height(1.dp)
-                        .background(MiuixTheme.colorScheme.dividerLine),
-                )
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        stringResource(R.string.settings_interval),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SamplingInterval.entries.forEach {
-                            SelectChip(
-                                text = stringResource(it.labelRes),
-                                selected = it == interval,
-                                onClick = { onInterval(it) },
-                            )
-                        }
-                    }
-                    Text(
-                        stringResource(R.string.settings_interval_desc),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        item {
-            MiuixCard(contentPadding = 0.dp) {
-                ActionRow(
-                    title = stringResource(R.string.settings_dual_cell),
-                    subtitle = stringResource(R.string.settings_dual_cell_desc),
-                    icon = Icons.Rounded.BatteryChargingFull,
-                    iconTint = MaterialTheme.colorScheme.tertiary,
-                    trailing = { MiuixSwitch(checked = dualCellMode, onCheckedChange = onDualCellMode) },
-                )
-            }
-        }
-
-        item { SectionTitle(stringResource(R.string.settings_section_overlay)) }
-        item {
-            MiuixCard(contentPadding = 0.dp) {
-                ActionRow(
-                    title = stringResource(R.string.settings_bubble),
-                    subtitle = stringResource(R.string.settings_bubble_desc),
-                    icon = Icons.Rounded.Layers,
-                    trailing = { MiuixSwitch(checked = bubbleEnabled, onCheckedChange = onToggleBubble) },
-                )
-                if (bubbleEnabled) {
-                    CardInnerDivider()
-                    Column(
-                        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(stringResource(R.string.settings_bubble_size), style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            stringResource(R.string.settings_bubble_size_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            BubbleSize.entries.forEach { size ->
-                                SelectChip(
-                                    text = stringResource(size.labelRes),
-                                    selected = size == bubbleSize,
-                                    onClick = { onBubbleSize(size) },
-                                )
-                            }
-                        }
-                    }
-                    CardInnerDivider()
-                    ActionRow(
-                        title = stringResource(R.string.settings_bubble_snap),
-                        subtitle = stringResource(R.string.settings_bubble_snap_desc),
-                        icon = Icons.Rounded.Layers,
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        trailing = {
-                            MiuixSwitch(checked = bubbleSnapToEdge, onCheckedChange = onBubbleSnapToEdge)
-                        },
-                    )
-                }
-                CardInnerDivider()
-                ActionRow(
-                    title = stringResource(R.string.settings_osd),
-                    subtitle = stringResource(R.string.settings_osd_desc),
-                    icon = Icons.Rounded.Notifications,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    trailing = { MiuixSwitch(checked = osdEnabled, onCheckedChange = onToggleOsd) },
-                )
-            }
-        }
-
-        if (osdEnabled) {
-            item {
-                MiuixCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBadge(Icons.Rounded.Notifications, MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_osd_metrics), style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                stringResource(
-                                    R.string.settings_osd_metrics_desc,
-                                    osdMetrics.size,
-                                    OsdMetric.entries.size,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OsdMetric.entries.forEach { metric ->
-                            SelectChip(
-                                text = stringResource(metric.labelRes),
-                                selected = osdMetrics.contains(metric),
-                                onClick = {
-                                    onOsdMetricsChange(
-                                        if (osdMetrics.contains(metric)) osdMetrics - metric else osdMetrics + metric,
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item { SectionTitle(stringResource(R.string.settings_section_fps)) }
-        item {
-            MiuixCard(contentPadding = 0.dp) {
-                ActionRow(
-                    title = stringResource(R.string.settings_fps_auto),
-                    subtitle = stringResource(R.string.settings_fps_auto_desc),
-                    icon = Icons.Rounded.Timer,
-                    trailing = {
-                        if (fpsLayer == null) {
-                            StatusPill(stringResource(R.string.state_enabled), PillTone.OK)
-                        } else {
-                            MiuixTextButton(
-                                text = stringResource(R.string.action_enable),
-                                onClick = { onSelectFpsLayer(null) },
-                            )
-                        }
-                    },
-                    onClick = { onSelectFpsLayer(null) },
-                )
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth()) {
-                    PillButton(
-                        text = if (fpsLayers.isEmpty()) {
-                            stringResource(R.string.settings_scan_layers)
-                        } else {
-                            stringResource(R.string.settings_rescan_layers)
-                        },
-                        onClick = onLoadFpsLayers,
-                        filled = false,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (fpsLayers.isNotEmpty()) {
-                    Text(
-                        stringResource(R.string.settings_fps_manual_fmt, fpsLayers.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                    fpsLayers.forEach { layer ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectFpsLayer(layer) }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                layer,
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (fpsLayer == layer) StatusPill(stringResource(R.string.state_in_use), PillTone.OK)
-                        }
-                    }
-                } else {
-                    Text(
-                        stringResource(R.string.settings_fps_none),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-            }
-        }
-
-        item { SectionTitle(stringResource(R.string.settings_section_service)) }
-        item {
-            MiuixCard(contentPadding = 0.dp) {
-                ActionRow(
-                    title = stringResource(R.string.settings_permission_center),
-                    subtitle = stringResource(
-                        R.string.settings_perm_ready_fmt,
-                        permissions.requiredGranted(),
-                        permissions.requiredTotal(),
-                    ),
-                    icon = Icons.Rounded.Shield,
-                    iconTint = if (permissions.requiredReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                    trailing = {
-                        StatusPill(
-                            if (permissions.requiredReady) {
-                                stringResource(R.string.state_ready)
-                            } else {
-                                stringResource(R.string.state_pending_auth)
-                            },
-                            if (permissions.requiredReady) PillTone.OK else PillTone.WARN,
-                        )
-                    },
-                    onClick = onOpenPermissions,
-                )
-                ActionRow(
-                    title = stringResource(R.string.settings_restart_service),
-                    subtitle = stringResource(R.string.settings_restart_service_desc),
-                    icon = Icons.Rounded.Refresh,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    onClick = onStartService,
-                    showDivider = true,
-                )
-                ActionRow(
-                    title = stringResource(R.string.settings_battery),
-                    subtitle = if (permissions.batteryUnrestricted) {
-                        stringResource(R.string.settings_battery_added)
-                    } else {
-                        stringResource(R.string.settings_battery_desc)
-                    },
-                    icon = Icons.Rounded.BatteryChargingFull,
-                    iconTint = MaterialTheme.colorScheme.tertiary,
-                    onClick = onRequestBatteryWhitelist,
-                    showDivider = true,
-                )
-                if (permissions.isMiui) {
-                    ActionRow(
-                        title = stringResource(R.string.settings_miui_autostart),
-                        subtitle = stringResource(R.string.settings_miui_autostart_desc),
-                        icon = Icons.Rounded.Settings,
-                        iconTint = MaterialTheme.colorScheme.tertiary,
-                        onClick = onOpenMiuiAutostart,
-                        showDivider = true,
-                    )
-                }
-            }
-        }
-
-        item {
-            val context = LocalContext.current
-            MiuixCard(contentPadding = 0.dp) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Rounded.Speed,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "WattScope Next",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.about_version_fmt, BuildConfig.VERSION_NAME),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                ActionRow(
-                    title = stringResource(R.string.about_github),
-                    subtitle = "github.com/RuSheng920/WattScope-Next",
-                    icon = Icons.Rounded.Code,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    trailing = {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)))
-                        }
-                    },
-                    showDivider = true,
-                )
-            }
-        }
-    }
-}
-
-/**
- * 应用语言：写入系统级 Per-app language（API 33+）。
- *
- * 不额外落一份本地偏好 —— 系统已经是唯一状态源，用户从系统设置里改过之后
- * 应用内显示不会与之打架。写入后系统会重建 Activity，采样服务不受影响。
- */
-@Composable
-private fun LanguageCard() {
-    val context = LocalContext.current
-    val localeManager = remember(context) { context.getSystemService(LocaleManager::class.java) }
-    var currentTag by remember {
-        mutableStateOf(localeManager?.applicationLocales?.get(0)?.toLanguageTag())
-    }
-    val selected = when {
-        currentTag == null -> 0
-        currentTag.orEmpty().startsWith("zh") -> 1
-        else -> 2
-    }
-    MiuixCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(Icons.Rounded.Info)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleSmall)
-                Text(
-                    stringResource(R.string.settings_language_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        SegmentedControl(
-            options = listOf(
-                stringResource(R.string.lang_system),
-                stringResource(R.string.lang_zh),
-                stringResource(R.string.lang_en),
-            ),
-            selectedIndex = selected,
-            onSelect = { index ->
-                val tag = when (index) {
-                    0 -> null
-                    1 -> "zh-CN"
-                    else -> "en"
-                }
-                currentTag = tag
-                localeManager?.applicationLocales = if (tag == null) {
-                    LocaleList.getEmptyLocaleList()
-                } else {
-                    LocaleList.forLanguageTags(tag)
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun CardInnerDivider(startPadding: Dp = 16.dp) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = startPadding, end = 16.dp)
-            .height(1.dp)
-            // 与 MIUIX ActionRow 用同一条分隔线色，卡片内不会出现两种灰
-            .background(MiuixTheme.colorScheme.dividerLine),
-    )
-}
-
 // ---------- 详情页 ----------
 
 @Composable
@@ -2711,4 +2257,3 @@ private fun durationText(record: RecordEntity): String {
 }
 
 /** 应用内展示的项目主页。 */
-private const val GITHUB_URL = "https://github.com/RuSheng920/WattScope-Next"

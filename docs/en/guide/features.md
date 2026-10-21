@@ -43,18 +43,31 @@ The detail view uses stride downsampling plus background aggregation, so opening
 
 ## Settings
 
-### Sampling
+The settings tab is an **index of categories**: each category opens its own page, so every entry fits on one screen instead of hiding in a single long list.
+
+| Entry | What's inside |
+| --- | --- |
+| Appearance & theme | Theme mode, language, liquid glass |
+| Sampling & power | QPT master switch, sample interval, dual-cell compensation |
+| Overlay & OSD | Bubble size and edge snapping, OSD switch and metrics |
+| FPS source | Follow the foreground app, or pin a SurfaceFlinger layer |
+| Service & permissions | Permission center, restart service, battery whitelist, autostart |
+| About | Version and repository link |
+
+Detail pages carry a back arrow in the top bar and support the system back gesture (predictive back with scale and corner radius).
+
+### Sampling & power
 
 - **Sample interval**: default 200 ms (5 Hz), adjustable
-- **Dual-cell device**: some dual-cell BMS drivers report only one cell's current, halving wall power. Enable this to sum both paths — live preview, OSD and stored data all follow
+- **Dual-cell device**: some dual-cell BMS drivers report only one cell's current, halving wall power. Enable this to sum both paths — live preview, OSD and stored data all follow (under the "Calibration" group)
 - All metrics are stored at the same rate as SoC power, so every chart shares one time axis
 
-### Theme
+### Appearance & theme
 
-Dark / light / follow-system, persisted locally. The nav bar is a MIUIX `FloatingNavigationBar` rendered through Backdrop: live blur, edge refraction, inner shadow, three opacity levels, or fall back to a docked style.
+Dark / light / follow-system, persisted locally. The nav bar is a MIUIX `FloatingNavigationBar` rendered through Backdrop: live blur, edge refraction, inner shadow, three opacity levels, or fall back to a docked style. The bar switch, intensity and the recording-time fallback all live in the "Liquid glass" group on this page.
 
 ::: warning Blur is disabled while recording
-"Reduce nav bar effects while recording" is on by default. Per-frame blur keeps the GPU busy and pollutes the power you are measuring, so recording mode keeps only a static glass layer.
+"Pause live blur while recording" is on by default. Per-frame blur keeps the GPU busy and pollutes the power you are measuring, so recording mode keeps only a static glass layer.
 :::
 
 ### Floating ball and OSD
@@ -63,8 +76,12 @@ See [Floating ball & OSD](/en/guide/overlay).
 
 ### About
 
-Shows the version and links to this repository. The permission centre entry lives here too, with a "ready" status pill.
+Shows the version and links to this repository.
 
 ### Language
 
-The UI ships in Chinese and English. By default it follows the system language; Settings → Appearance lets you pin either one (Android 13+ per-app language), and the switch takes effect immediately without touching sampling.
+The UI ships in Chinese and English. By default it follows the system language; Settings → Appearance & theme → Language lets you pin either one (Android 13+ per-app language), and the switch takes effect immediately without touching sampling.
+
+### Service & permissions
+
+The permission center lists every grant state with a "ready" status pill on the entry; restarting the foreground service, the battery whitelist and MIUI autostart sit under "Service & keep-alive" on the same page.

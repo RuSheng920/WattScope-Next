@@ -44,7 +44,7 @@ Dashboard → Start recording → switch to the target app → come back → Sto
 ```
 
 ```text [Floating ball]
-Enable the ball in Settings → switch to the target app → tap the ball to start
+Enable the ball in Settings → Overlay & OSD → switch to the target app → tap the ball to start
 → leaving that app stops the recording automatically
 ```
 

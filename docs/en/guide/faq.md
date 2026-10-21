@@ -32,7 +32,7 @@ If all three fail you see `--`.
 
 ## Dual-cell devices read about half the real power
 
-Some dual-cell BMS drivers report only one cell's current. Enable **Settings → Sampling → Dual-cell device** to sum both paths — live preview, OSD and stored data all follow.
+Some dual-cell BMS drivers report only one cell's current. Enable **Settings → Sampling & power → Calibration → Dual-cell device** to sum both paths — live preview, OSD and stored data all follow.
 
 ## FPS shows 0 in games
 
