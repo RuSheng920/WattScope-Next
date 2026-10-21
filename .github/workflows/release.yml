@@ -159,3 +159,20 @@ jobs:
           fail_on_unmatched_files: true
           prerelease: ${{ env.SIGNING == 'none' }}
           append_body: false
+
+  # 发版成功后强制重建文档站，保证站点版本号与 Release 一致。
+  # 平时 docs 只由「push main 且命中 paths」触发；若某次只推了 tag（main 上没动
+  # app/build.gradle.kts，例如补发历史版本），站点就会停在旧版本号上。
+  # 注意：GITHUB_TOKEN 发起的 push 不会触发其它工作流，但 workflow_dispatch 是直接
+  # 调度，不受这条防递归限制，所以这里能生效。
+  # 单独成 job 是为了把 actions: write 限制在这一步，构建 APK 的 job 保持最小权限。
+  sync-docs:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch docs deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-docs.yml --repo "$GITHUB_REPOSITORY" --ref main
