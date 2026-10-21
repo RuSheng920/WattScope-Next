@@ -156,6 +156,14 @@ See [Releases](../../releases).
 
 ## Changelog
 
+### v1.3.1
+
+Fixes one version-string issue in v1.3.0.
+
+#### Fixed
+
+- **The Beta channel showed the version as `1.3.1-beta.1.apk`**: beta APK files are named like `WattScope-Next-v1.3.1-beta.1.apk`, and the pre-release character class swallowed the `.apk` extension as another identifier. The extension is now stripped before parsing, so the version reads `1.3.1-beta.1`
+
 ### v1.3.0
 
 This release brings **in-app updates** to the About page and rounds out the project links.

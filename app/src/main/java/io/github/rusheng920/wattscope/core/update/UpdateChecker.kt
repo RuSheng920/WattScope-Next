@@ -161,7 +161,11 @@ object UpdateChecker {
             }
             if (apkUrl.isEmpty()) continue
 
-            val version = SemVer.parse(apkName) ?: SemVer.parse(tag) ?: continue
+            // 必须先去掉扩展名：预发布段的字符类含 `.`，直接匹配 "…-beta.1.apk"
+            // 会把 `.apk` 当成一个预发布标识（版本变 "1.3.1-beta.1.apk"）
+            val version = SemVer.parse(apkName.substringBeforeLast('.'))
+                ?: SemVer.parse(tag)
+                ?: continue
             out += ReleaseInfo(
                 version = version,
                 isBeta = obj.optBoolean("prerelease") || tag.startsWith("beta/"),
