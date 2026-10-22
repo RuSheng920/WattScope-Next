@@ -159,11 +159,33 @@ class UpdateRepository(private val context: Context) {
 
     private fun apkFileName(info: ReleaseInfo): String = "WattScope-Next-${info.versionName}.apk"
 
+    /**
+     * 下载 APK，官方地址不通就换镜像重试。
+     *
+     * 直连 `github.com/…/releases/download/…` 在国内经常几十 KB 后断流，
+     * 表现是「下载到 12% 卡住」或直接失败。镜像只是 URL 前缀，逐个试代价很小。
+     */
     private suspend fun download(info: ReleaseInfo): File = withContext(Dispatchers.IO) {
         // 只留当前版本：上一个版本的包没有再装的可能
         updateDir().listFiles()?.forEach { it.delete() }
         val target = File(updateDir(), apkFileName(info))
-        val conn = openFollowing(info.apkUrl)
+        var lastError: Throwable? = null
+        for (url in UpdateChecker.downloadCandidates(info.apkUrl)) {
+            try {
+                copyTo(url, target, info)
+                return@withContext target
+            } catch (t: Throwable) {
+                // 取消要原样抛出，不能被当成「换个镜像重试」
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                target.delete()
+                lastError = t
+            }
+        }
+        throw lastError ?: java.io.IOException("download failed")
+    }
+
+    private suspend fun copyTo(url: String, target: File, info: ReleaseInfo) {
+        val conn = openFollowing(url)
         try {
             conn.inputStream.use { input ->
                 target.outputStream().use { out ->
@@ -192,7 +214,6 @@ class UpdateRepository(private val context: Context) {
         } finally {
             conn.disconnect()
         }
-        target
     }
 
     /** GitHub 资产地址会 302 到 CDN，HttpURLConnection 默认不跟随，需要手动跳。 */

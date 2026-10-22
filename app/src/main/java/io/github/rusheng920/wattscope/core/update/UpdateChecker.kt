@@ -100,8 +100,32 @@ data class ReleaseInfo(
  * 区别只在候选集合是否包含 prerelease。
  */
 object UpdateChecker {
-    private const val API =
-        "https://api.github.com/repos/RuSheng920/WattScope-Next/releases?per_page=30"
+    private const val API_PATH = "repos/RuSheng920/WattScope-Next/releases?per_page=30"
+
+    /**
+     * API 入口候选：官方在前，镜像在后。
+     *
+     * 国内直连 `api.github.com` 常见「连接超时 / TLS 被重置」，用户看到的就是「检查更新失败」。
+     * 镜像都是「前缀代理」形态：把完整的官方 URL 接在代理域名后面即可，路径与参数不用改。
+     * 逐个尝试、谁先返回有效 JSON 就用谁 —— 不写死某一个，镜像挂了也不会把功能一起带下去。
+     */
+    private val API_CANDIDATES = listOf(
+        "https://api.github.com/$API_PATH",
+        "https://gh-proxy.com/https://api.github.com/$API_PATH",
+        "https://ghfast.top/https://api.github.com/$API_PATH",
+        "https://api.kkgithub.com/$API_PATH",
+    )
+
+    /** 下载地址的镜像前缀。资产走 github.com/…/releases/download/…，同样可以前缀代理。 */
+    private val DOWNLOAD_MIRRORS = listOf(
+        "https://gh-proxy.com/",
+        "https://ghfast.top/",
+    )
+
+    /** 官方地址 + 各镜像，按优先级排列；下载失败时逐个重试。 */
+    fun downloadCandidates(url: String): List<String> =
+        listOf(url) + DOWNLOAD_MIRRORS.map { it + url }
+
 
     /**
      * 取版本最大的可升级发布。
@@ -119,10 +143,25 @@ object UpdateChecker {
             )
     }
 
+    /**
+     * 依次尝试官方与镜像。
+     *
+     * 总预算 20 秒：镜像在境外也慢，无限等下去用户只会以为卡死。超预算就带着已试探的结果返回。
+     */
     private fun fetchReleases(): List<ReleaseInfo> {
-        val conn = (URL(API).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 15_000
+        val deadline = System.currentTimeMillis() + 20_000
+        API_CANDIDATES.forEach { url ->
+            if (System.currentTimeMillis() >= deadline) return@forEach
+            val list = runCatching { fetchOnce(url) }.getOrElse { emptyList() }
+            if (list.isNotEmpty()) return list
+        }
+        return emptyList()
+    }
+
+    private fun fetchOnce(url: String): List<ReleaseInfo> {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 6_000
+            readTimeout = 8_000
             requestMethod = "GET"
             // GitHub API 对无 UA 的请求直接 403
             setRequestProperty("Accept", "application/vnd.github+json")

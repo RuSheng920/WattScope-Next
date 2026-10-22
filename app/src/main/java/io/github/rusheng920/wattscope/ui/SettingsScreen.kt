@@ -976,34 +976,28 @@ fun AboutSettingsPage(
         item { SectionTitle(stringResource(R.string.about_section_project)) }
         item {
             MiuixCard(contentPadding = 0.dp) {
-                LinkRow(
-                    title = stringResource(R.string.about_github),
-                    url = GITHUB_URL,
-                    icon = Icons.Rounded.Code,
-                    onClick = { openUrl(context, GITHUB_URL) },
-                )
+                // 官网在前（对外入口），项目主页在后
                 LinkRow(
                     title = stringResource(R.string.about_website),
                     url = WEBSITE_URL,
                     icon = Icons.Rounded.Language,
                     onClick = { openUrl(context, WEBSITE_URL) },
+                )
+                LinkRow(
+                    title = stringResource(R.string.about_github),
+                    url = GITHUB_URL,
+                    icon = Icons.Rounded.Code,
+                    onClick = { openUrl(context, GITHUB_URL) },
                     showDivider = true,
                 )
-                // 许可清单属于「关于这个应用」的一部分，放在项目链接之后，
-                // 而不是塞进设置首页 —— 它是一个下钻页，不是独立功能。
-                ActionRow(
+                // 许可清单属于「关于这个应用」的一部分，排在项目链接之后。
+                // 必须走 LinkRow 而不是 ActionRow：后者是 MIUIX 组件，标题字重与上面两行不同，
+                // 三行并排时「开源软件许可」会明显偏粗/偏大。
+                LinkRow(
                     title = stringResource(SettingsPage.LICENSES.titleRes),
+                    url = "",
                     subtitle = stringResource(R.string.settings_page_licenses_desc),
                     icon = Icons.Rounded.Description,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    trailing = {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
                     onClick = onOpenLicenses,
                     showDivider = true,
                 )
@@ -1349,6 +1343,8 @@ private fun LinkRow(
     icon: ImageVector,
     onClick: () -> Unit,
     showDivider: Boolean = false,
+    /** 副标题，默认显示链接地址。 */
+    subtitle: String? = null,
 ) {
     Column(Modifier.fillMaxWidth()) {
         if (showDivider) CardInnerDivider()
@@ -1364,7 +1360,7 @@ private fun LinkRow(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    url,
+                    subtitle ?: url,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
