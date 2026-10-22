@@ -363,6 +363,9 @@ class MonitorRepository(
             batteryUnrestricted = powerManager?.isIgnoringBatteryOptimizations(appContext.packageName) ?: false,
             usageAccess = usageGranted,
             accessibility = isAccessibilityServiceEnabled(),
+            // 应用内更新要装 APK；没有这个权限系统会直接拦掉安装框
+            installPackages = runCatching { appContext.packageManager.canRequestPackageInstalls() }
+                .getOrDefault(false),
             isMiui = manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco"),
         )
     }

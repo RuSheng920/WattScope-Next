@@ -13,6 +13,8 @@ data class AppPermissions(
     val batteryUnrestricted: Boolean = false,
     val usageAccess: Boolean = false,
     val accessibility: Boolean = false,
+    /** 安装未知应用：应用内更新走 PackageInstaller，没有这项会直接弹不出安装框。 */
+    val installPackages: Boolean = false,
     val isMiui: Boolean = false,
 ) {
     /** 核心权限：Root、悬浮窗、通知。用于首页进度提示。 */
@@ -30,7 +32,8 @@ data class AppPermissions(
      * 注意不含自启动 —— 那是厂商私有开关，root 也代劳不了。
      */
     val allSecondaryGranted: Boolean
-        get() = overlay && notifications && batteryUnrestricted && usageAccess && accessibility
+        get() = overlay && notifications && batteryUnrestricted && usageAccess &&
+            accessibility && installPackages
 
     /**
      * 是否已知存在未授予的核心权限。

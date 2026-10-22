@@ -455,4 +455,10 @@
     <string name="float_kind_temp">CPU 温度</string>
     <string name="settings_section_floats">独立浮层</string>
     <string name="settings_floats_desc">每个指标一个小胶囊，分别开关；只读、不挡触摸。</string>
+    <string name="overview_cache_shared_fmt">%1$d 核共用</string>
+    <string name="overview_cache_exclusive">单核独占</string>
+    <string name="overview_cache_size_missing">该内核未导出缓存容量，仅显示层级与共享范围</string>
+    <string name="perm_install">安装未知应用</string>
+    <string name="perm_install_desc">应用内更新下载完成后需要它才能拉起安装</string>
+    <string name="perm_quick_step_install">安装应用</string>
 </resources>

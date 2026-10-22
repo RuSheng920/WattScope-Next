@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.core.sysinfo.HardwareStatic
 import io.github.rusheng920.wattscope.core.sysinfo.LiveStatus
+import io.github.rusheng920.wattscope.core.sysinfo.countCores
 import io.github.rusheng920.wattscope.core.sysinfo.formatFreq
 import io.github.rusheng920.wattscope.core.sysinfo.formatKb
 import io.github.rusheng920.wattscope.core.sysinfo.formatUptime
@@ -408,8 +409,18 @@ private fun CacheCard(hardware: HardwareStatic?) {
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             } else {
+                // 有的内核不导出 size（本机 SM8850 就是），此时改显「哪些核共用这一级」——
+                // 有信息量，也解释了为什么没有容量数字
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     caches.forEach { c ->
+                        val share = c.sharedCpus
+                        val cores = countCores(share)
+                        val value = c.size.ifBlank {
+                            when {
+                                cores > 1 -> stringResource(R.string.overview_cache_shared_fmt, cores)
+                                else -> stringResource(R.string.overview_cache_exclusive)
+                            }
+                        }
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(10.dp))
@@ -423,7 +434,7 @@ private fun CacheCard(hardware: HardwareStatic?) {
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 )
                                 Text(
-                                    c.size,
+                                    value,
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MiuixTheme.colorScheme.onSurface,
@@ -431,6 +442,13 @@ private fun CacheCard(hardware: HardwareStatic?) {
                             }
                         }
                     }
+                }
+                if (caches.any { it.size.isBlank() }) {
+                    Text(
+                        stringResource(R.string.overview_cache_size_missing),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
                 }
             }
             InfoRow(

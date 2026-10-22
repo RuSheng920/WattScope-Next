@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
                     onRequestNotifications = { requestNotificationPermission() },
                     onRequestUsageAccess = { openUsageAccessSettings() },
                     onRequestAccessibility = { openAccessibilitySettings() },
+                    onRequestInstall = { openInstallSettings() },
                 )
             }
         }
@@ -182,6 +183,17 @@ class MainActivity : ComponentActivity() {
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
             )
+        }
+    }
+
+    /** 安装未知应用：应用内更新下完包必须靠它，否则安装框根本弹不出来。 */
+    private fun openInstallSettings() {
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
+            )
+        }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)) }
         }
     }
 

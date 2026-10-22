@@ -69,6 +69,7 @@ class PermissionGranter(private val rootManager: RootManager) {
         OVERLAY("overlay"),
         USAGE("usage"),
         BATTERY("battery"),
+        INSTALL("install"),
         ACCESSIBILITY("accessibility"),
     }
 

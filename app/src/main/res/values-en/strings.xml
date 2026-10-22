@@ -457,4 +457,10 @@
     <string name="float_kind_temp">CPU temp</string>
     <string name="settings_section_floats">Separate floats</string>
     <string name="settings_floats_desc">One small pill per metric, toggled independently. Read-only and touch-through.</string>
+    <string name="overview_cache_shared_fmt">Shared by %1$d cores</string>
+    <string name="overview_cache_exclusive">Per-core</string>
+    <string name="overview_cache_size_missing">This kernel does not export cache sizes; levels and sharing are shown instead</string>
+    <string name="perm_install">Install unknown apps</string>
+    <string name="perm_install_desc">Needed so the in-app update can launch the installer after downloading</string>
+    <string name="perm_quick_step_install">Install apps</string>
 </resources>

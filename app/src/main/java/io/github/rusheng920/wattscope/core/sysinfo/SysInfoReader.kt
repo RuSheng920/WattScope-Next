@@ -30,8 +30,19 @@ data class ClusterDetail(
     val compactCores: String get() = compactCoreSpec(cores)
 }
 
-/** CPU 缓存层级（来自 cpu0 的 cache/index*）。 */
-data class CacheLevel(val level: Int, val type: String, val size: String) {
+/**
+ * CPU 缓存层级（来自 cpu0 的 cache/index*）。
+ *
+ * [size] 可能为空：不少 ARM64 内核（本机实测 SM8850 就是）只导出 level/type/shared_cpu_list，
+ * 没有 `size` 属性。这时仍然展示层级与共享范围 —— 「哪些核共用这一级」本身就是有效信息，
+ * 比整块显示「本设备未导出」有用。
+ */
+data class CacheLevel(
+    val level: Int,
+    val type: String,
+    val size: String,
+    val sharedCpus: String = "",
+) {
     val label: String
         get() = when {
             level <= 0 -> type
@@ -172,8 +183,14 @@ class SysInfoReader(private val rootManager: RootManager) {
                     val p = line.split('|')
                     if (p.size >= 4) {
                         val level = p[1].trim().toIntOrNull() ?: 0
-                        val size = p[3].trim()
-                        if (level > 0 && size.isNotBlank()) caches += CacheLevel(level, p[2].trim(), size)
+                        if (level > 0) {
+                            caches += CacheLevel(
+                                level = level,
+                                type = p[2].trim(),
+                                size = p[3].trim(),
+                                sharedCpus = p.getOrNull(4)?.trim().orEmpty(),
+                            )
+                        }
                     }
                 }
 
@@ -311,11 +328,12 @@ class SysInfoReader(private val rootManager: RootManager) {
         append("printf 'CLU|%s|%s|%s|%s|%s\\n' \"\$rel\" \"\$cur\" \"\$mn\" \"\$mx\" \"\$gov\"; done; ")
 
         append("for c in /sys/devices/system/cpu/cpu0/cache/index*; do ")
-        append("[ -d \"\$c\" ] || continue; l=; t=; s=; ")
+        append("[ -d \"\$c\" ] || continue; l=; t=; s=; sh=; ")
         append("read -r l 2>/dev/null < \$c/level; ")
         append("read -r t 2>/dev/null < \$c/type; ")
         append("read -r s 2>/dev/null < \$c/size; ")
-        append("printf 'CACHE|%s|%s|%s\\n' \"\$l\" \"\$t\" \"\$s\"; done; ")
+        append("read -r sh 2>/dev/null < \$c/shared_cpu_list; ")
+        append("printf 'CACHE|%s|%s|%s|%s\\n' \"\$l\" \"\$t\" \"\$s\" \"\$sh\"; done; ")
 
         append("g=/sys/class/kgsl/kgsl-3d0; ")
         append("gm=; read -r gm 2>/dev/null < \$g/gpu_model; printf 'GPU|%s\\n' \"\$gm\"; ")

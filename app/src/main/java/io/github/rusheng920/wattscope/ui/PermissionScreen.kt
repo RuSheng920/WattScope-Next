@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +91,7 @@ fun PermissionCenter(
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
+    onRequestInstall: () -> Unit,
     onOpenAutostart: () -> Unit,
     onGrantAll: (() -> Unit)? = null,
     granting: Boolean = false,
@@ -209,6 +211,22 @@ fun PermissionCenter(
                     },
                     actionText = if (permissions.batteryUnrestricted) null else stringResource(R.string.action_open_settings),
                     onAction = onRequestBattery,
+                    showDivider = true,
+                )
+                // 应用内更新依赖它：没有这项，更新包下完了也弹不出安装框
+                PermissionRow(
+                    title = stringResource(R.string.perm_install),
+                    subtitle = stringResource(R.string.perm_install_desc),
+                    icon = Icons.Rounded.SystemUpdate,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    tone = if (permissions.installPackages) PillTone.OK else PillTone.WARN,
+                    statusText = if (permissions.installPackages) {
+                        stringResource(R.string.state_granted)
+                    } else {
+                        stringResource(R.string.state_not_granted)
+                    },
+                    actionText = if (permissions.installPackages) null else stringResource(R.string.action_grant),
+                    onAction = onRequestInstall,
                     showDivider = true,
                 )
                 // 无障碍宿主：不是「必需」，但它是后台/游戏里点击能响应的唯一稳定路径
@@ -397,6 +415,7 @@ private fun stepLabel(step: PermissionGranter.Step): String = stringResource(
         PermissionGranter.Step.OVERLAY -> R.string.perm_quick_step_overlay
         PermissionGranter.Step.USAGE -> R.string.perm_quick_step_usage
         PermissionGranter.Step.BATTERY -> R.string.perm_quick_step_battery
+        PermissionGranter.Step.INSTALL -> R.string.perm_quick_step_install
         PermissionGranter.Step.ACCESSIBILITY -> R.string.perm_quick_step_accessibility
     },
 )
@@ -415,6 +434,7 @@ fun PermissionPage(
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
+    onRequestInstall: () -> Unit,
     onOpenAutostart: () -> Unit,
     onGrantAll: () -> Unit,
     granting: Boolean,
@@ -484,6 +504,7 @@ fun PermissionPage(
                     onRequestBattery = onRequestBattery,
                     onRequestUsage = onRequestUsage,
                     onRequestAccessibility = onRequestAccessibility,
+                    onRequestInstall = onRequestInstall,
                     onOpenAutostart = onOpenAutostart,
                     onGrantAll = onGrantAll,
                     granting = granting,
@@ -508,6 +529,7 @@ fun OnboardingScreen(
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
+    onRequestInstall: () -> Unit,
     onOpenAutostart: () -> Unit,
     onGrantAll: () -> Unit,
     granting: Boolean,
@@ -564,6 +586,7 @@ fun OnboardingScreen(
                 onRequestBattery = onRequestBattery,
                 onRequestUsage = onRequestUsage,
                 onRequestAccessibility = onRequestAccessibility,
+                onRequestInstall = onRequestInstall,
                 onOpenAutostart = onOpenAutostart,
                 onGrantAll = onGrantAll,
                 granting = granting,

@@ -177,6 +177,7 @@ fun QptApp(
     onRequestNotifications: () -> Unit,
     onRequestUsageAccess: () -> Unit,
     onRequestAccessibility: () -> Unit,
+    onRequestInstall: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val records by viewModel.records.collectAsState()
@@ -620,6 +621,7 @@ fun QptApp(
                 onRequestBattery = onRequestBatteryWhitelist,
                 onRequestUsage = onRequestUsageAccess,
                 onRequestAccessibility = onRequestAccessibility,
+                onRequestInstall = onRequestInstall,
                 onOpenAutostart = onOpenMiuiAutostart,
                 onGrantAll = viewModel::grantAllViaRoot,
                 granting = granting,
@@ -636,6 +638,7 @@ fun QptApp(
                 onRequestBattery = onRequestBatteryWhitelist,
                 onRequestUsage = onRequestUsageAccess,
                 onRequestAccessibility = onRequestAccessibility,
+                onRequestInstall = onRequestInstall,
                 onOpenAutostart = onOpenMiuiAutostart,
                 onGrantAll = viewModel::grantAllViaRoot,
                 granting = granting,
