@@ -1,6 +1,7 @@
 package io.github.rusheng920.wattscope.core.qpt
 
 import io.github.rusheng920.wattscope.core.root.RootManager
+import io.github.rusheng920.wattscope.core.root.RootShellPool.Lane
 import io.github.rusheng920.wattscope.core.root.escapeForShell
 import io.github.rusheng920.wattscope.domain.PowerZone
 import io.github.rusheng920.wattscope.domain.ZoneSample
@@ -16,24 +17,25 @@ class QptPowerReader(
     suspend fun hasRoot(): Boolean = rootManager.hasRoot()
 
     suspend fun isAvailable(): Boolean =
-        rootManager.execute("[ -d '$qptRoot/' ] && echo 1 || echo 0").firstOrNull()?.trim() == "1"
+        rootManager.execute("[ -d '$qptRoot/' ] && echo 1 || echo 0", lane = Lane.QUERY).firstOrNull()?.trim() == "1"
 
     suspend fun isEnabled(): Boolean = rootManager.readFile("$qptRoot/enabled")?.trim() == "1"
 
     suspend fun setEnabled(enabled: Boolean): Boolean =
-        rootManager.writeFile("$qptRoot/enabled", if (enabled) "1" else "0")
+        rootManager.writeFile("$qptRoot/enabled", if (enabled) "1" else "0", lane = Lane.CONTROL)
 
     suspend fun scanZones(): List<PowerZone> {
         val scanRoot = qptRoot.trimEnd('/') + "/"
         val paths = rootManager.execute(
             "find '$scanRoot' -mindepth 2 -type f -name energy_uj 2>/dev/null | sed 's#/energy_uj\$##' | sort",
+            lane = Lane.QUERY,
         ).mapNotNull { it.trim().takeIf { p -> p.isNotEmpty() } }
         if (paths.isEmpty()) return emptyList()
         // 单条命令批量读取所有 zone 的 name 与 power_uw 可用性，避免逐 zone su 往返
         val cmd = paths.joinToString("; ") {
             "n=\$(cat '${it}/name' 2>/dev/null); [ -f '${it}/power_uw' ] && pw=1 || pw=0; echo \"${it}|\$n|\$pw\""
         }
-        return rootManager.execute(cmd).mapNotNull { line ->
+        return rootManager.execute(cmd, lane = Lane.QUERY).mapNotNull { line ->
             val parts = line.split('|')
             if (parts.size < 3) return@mapNotNull null
             val name = parts[1].trim()

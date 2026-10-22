@@ -22,6 +22,7 @@ import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.UpdateChannel
 import io.github.rusheng920.wattscope.domain.UpdateState
+import io.github.rusheng920.wattscope.core.fps.LayerInfo
 import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -76,8 +77,18 @@ class QptViewModel(
 
     /** FPS 数据源：null = 自动跟随前台应用；非空 = 用户手工指定的 SurfaceFlinger 图层。 */
     val fpsLayer: StateFlow<String?> = repository.fpsLayerFlow
-    private val _fpsLayers = MutableStateFlow<List<String>>(emptyList())
-    val fpsLayers: StateFlow<List<String>> = _fpsLayers.asStateFlow()
+    private val _fpsLayers = MutableStateFlow<List<LayerInfo>>(emptyList())
+
+    /** 扫描结果：按「属于前台应用 → 图层类型 → 名称长度」排序，带实测帧率。 */
+    val fpsLayers: StateFlow<List<LayerInfo>> = _fpsLayers.asStateFlow()
+
+    /** 扫描中：置灰按钮，避免用户连点触发十几次 dumpsys。 */
+    private val _fpsScanning = MutableStateFlow(false)
+    val fpsScanning: StateFlow<Boolean> = _fpsScanning.asStateFlow()
+
+    /** 自动模式当前实际选中的图层，用于让用户知道「自动」到底选了谁。 */
+    private val _autoFpsLayer = MutableStateFlow<String?>(null)
+    val autoFpsLayer: StateFlow<String?> = _autoFpsLayer.asStateFlow()
 
     // ---------- 更新 ----------
 
@@ -122,7 +133,18 @@ class QptViewModel(
     val detailChartOrder: StateFlow<List<DetailChartSection>> = repository.detailChartOrderFlow
     fun setDetailChartOrder(order: List<DetailChartSection>) = repository.setDetailChartOrder(order)
     fun setFpsLayer(layer: String?) { repository.fpsLayer = layer }
-    fun loadFpsLayers() = viewModelScope.launch { _fpsLayers.value = repository.listFpsLayers() }
+
+    /** 扫描 SurfaceFlinger 图层并实测帧率。单次点击可能耗时 2~5 秒（每个候选一次 dumpsys）。 */
+    fun loadFpsLayers() = viewModelScope.launch {
+        if (_fpsScanning.value) return@launch
+        _fpsScanning.value = true
+        try {
+            _fpsLayers.value = repository.scanFpsLayers()
+            _autoFpsLayer.value = repository.autoFpsPickedLayer()
+        } finally {
+            _fpsScanning.value = false
+        }
+    }
 
     /** 手动检查更新：与「自动检查」开关无关，随时可点。 */
     fun checkUpdate() = updateRepository.check(manual = true)

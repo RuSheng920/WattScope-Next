@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
                     onExportRecord = { recordId, asJson -> startExport(recordId, asJson) },
                     onRequestNotifications = { requestNotificationPermission() },
                     onRequestUsageAccess = { openUsageAccessSettings() },
+                    onRequestAccessibility = { openAccessibilitySettings() },
                 )
             }
         }
@@ -168,6 +169,23 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:$packageName")))
         }.onFailure {
             runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        }
+    }
+
+    /**
+     * 跳系统无障碍列表。
+     *
+     * 优先用 `ACTION_ACCESSIBILITY_DETAILS_SETTINGS` 直达本应用那一页；各家 ROM 对它
+     * 的实现并不一致（部分直接抛 ActivityNotFound），失败一律回落到无障碍总列表。
+     */
+    private fun openAccessibilitySettings() {
+        runCatching {
+            // 常量在部分 SDK 上不可见，用字面值；ACTION_ACCESSIBILITY_DETAILS_SETTINGS
+            startActivity(
+                Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS", Uri.parse("package:$packageName")),
+            )
+        }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         }
     }
 

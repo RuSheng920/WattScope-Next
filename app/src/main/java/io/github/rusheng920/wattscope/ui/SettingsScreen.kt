@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -74,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.github.rusheng920.wattscope.BuildConfig
 import io.github.rusheng920.wattscope.R
+import io.github.rusheng920.wattscope.core.fps.LayerInfo
 import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
@@ -93,6 +95,7 @@ import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.SegmentedControl
 import io.github.rusheng920.wattscope.ui.components.SelectChip
 import io.github.rusheng920.wattscope.ui.components.StatusPill
+import io.github.rusheng920.wattscope.ui.theme.LocalStatusColors
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -570,7 +573,9 @@ fun OverlaySettingsPage(
 @Composable
 fun FpsSettingsPage(
     fpsLayer: String?,
-    fpsLayers: List<String>,
+    fpsLayers: List<LayerInfo>,
+    scanning: Boolean,
+    autoLayer: String?,
     onSelectFpsLayer: (String?) -> Unit,
     onLoadFpsLayers: () -> Unit,
     bottomPadding: Dp = 24.dp,
@@ -594,47 +599,63 @@ fun FpsSettingsPage(
                     },
                     onClick = { onSelectFpsLayer(null) },
                 )
-                // 扫描是「动作」而不是「状态」，和上面的跟随模式分两组；
-                // 扫描到的图层直接列在同一张卡里，选中项右侧挂「使用中」。
+                // 自动模式下告诉用户「自动」此刻到底用了哪一层。
+                // 图层名很长，塞进 ActionRow 副标题会被 2:5:3 挤成孤字，单独一行更清楚。
+                if (fpsLayer == null && !autoLayer.isNullOrBlank()) {
+                    AutoLayerLine(autoLayer)
+                }
+                // 扫描是「动作」而不是「状态」，和上面的跟随模式分两组。
                 ActionRow(
                     title = stringResource(
-                        if (fpsLayers.isEmpty()) {
-                            R.string.settings_scan_layers
-                        } else {
-                            R.string.settings_rescan_layers
+                        when {
+                            scanning -> R.string.settings_fps_scanning
+                            fpsLayers.isEmpty() -> R.string.settings_scan_layers
+                            else -> R.string.settings_rescan_layers
                         },
                     ),
-                    subtitle = if (fpsLayers.isEmpty()) {
-                        stringResource(R.string.settings_fps_stack_empty)
-                    } else {
-                        stringResource(R.string.settings_fps_manual_fmt, fpsLayers.size)
+                    subtitle = when {
+                        scanning -> stringResource(R.string.settings_fps_scanning_desc)
+                        fpsLayers.isEmpty() -> stringResource(R.string.settings_fps_stack_empty)
+                        else -> stringResource(
+                            R.string.settings_fps_found_fmt,
+                            fpsLayers.count { it.usable },
+                            fpsLayers.size,
+                        )
                     },
                     icon = Icons.Rounded.Search,
                     iconTint = MaterialTheme.colorScheme.primary,
-                    onClick = onLoadFpsLayers,
+                    onClick = if (scanning) null else onLoadFpsLayers,
                     showDivider = true,
                     // 动作行没有开关也没有胶囊时，右侧空着会被读成「纯展示文本」。
-                    // 挂一个箭头明示可点。
+                    // 扫描中转圈、其余状态挂箭头明示可点。
                     trailing = {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (scanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Rounded.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     },
                 )
                 fpsLayers.forEach { layer ->
                     LayerRow(
-                        name = layer,
-                        selected = fpsLayer == layer,
-                        onClick = { onSelectFpsLayer(layer) },
+                        layer = layer,
+                        selected = fpsLayer == layer.name,
+                        onClick = { onSelectFpsLayer(layer.name) },
                     )
                 }
             }
         }
         // 空态说明放卡外：这是「怎么才能扫到」的引导，不属于某个具体设置项，
         // 塞进行内副标题会被 2:5:3 布局压成五六行。
-        if (fpsLayers.isEmpty()) {
+        if (fpsLayers.isEmpty() && !scanning) {
             item {
                 Text(
                     stringResource(R.string.settings_fps_none),
@@ -647,30 +668,90 @@ fun FpsSettingsPage(
     }
 }
 
-/** 图层行：选中项右侧挂「使用中」胶囊，未选中项点击即切换。 */
+/** 自动模式当前实际使用的图层：缩进 + 等宽小字，与设置行区分开。 */
 @Composable
-private fun LayerRow(name: String, selected: Boolean, onClick: () -> Unit) {
+private fun AutoLayerLine(layer: String) {
+    Text(
+        stringResource(R.string.settings_fps_current_fmt, layer),
+        style = MaterialTheme.typography.labelSmall,
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(start = 60.dp, end = 16.dp, bottom = 10.dp),
+    )
+}
+
+/**
+ * 图层行：左边层名 + 类型标签，右边实测帧率。
+ *
+ * 帧率是扫描时真跑了一次 `--latency` 得到的 —— 名字看起来对的层未必有帧数据，
+ * 直接把数值摆出来，用户不必靠猜（选中一个 0 帧的层只会得到空曲线）。
+ */
+@Composable
+private fun LayerRow(layer: LayerInfo, selected: Boolean, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         CardInnerDivider()
         Row(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                name,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (selected) {
-                Spacer(Modifier.width(8.dp))
-                StatusPill(stringResource(R.string.state_in_use), PillTone.OK)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    layer.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(layer.kind.labelRes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (layer.isForeground) {
+                        Text(
+                            stringResource(R.string.fps_layer_foreground),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            when {
+                selected -> StatusPill(stringResource(R.string.state_in_use), PillTone.OK)
+                layer.usable -> FpsBadge(layer.fps ?: 0f)
+                layer.probed -> Text(
+                    stringResource(R.string.settings_fps_probe_none),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+    }
+}
+
+/** 实测帧率徽标：等宽数字，绿色语义色，和「无数据」形成对比。 */
+@Composable
+private fun FpsBadge(fps: Float) {
+    val colors = LocalStatusColors.current
+    Box(
+        Modifier
+            .clip(CircleShape)
+            .background(colors.okBg)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            stringResource(R.string.settings_fps_badge_fmt, String.format(java.util.Locale.US, "%.0f", fps)),
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            color = colors.okFg,
+        )
     }
 }
 

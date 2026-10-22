@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Insights
@@ -84,6 +85,7 @@ fun PermissionCenter(
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
+    onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 24.dp,
@@ -186,6 +188,23 @@ fun PermissionCenter(
                     },
                     actionText = if (permissions.batteryUnrestricted) null else stringResource(R.string.action_open_settings),
                     onAction = onRequestBattery,
+                    showDivider = true,
+                )
+                // 无障碍宿主：不是「必需」，但它是后台/游戏里点击能响应的唯一稳定路径
+                PermissionRow(
+                    title = stringResource(R.string.perm_accessibility),
+                    subtitle = stringResource(R.string.perm_accessibility_desc),
+                    icon = Icons.Rounded.Accessibility,
+                    iconTint = MaterialTheme.colorScheme.tertiary,
+                    tone = if (permissions.accessibility) PillTone.OK else PillTone.NEUTRAL,
+                    statusText = if (permissions.accessibility) {
+                        stringResource(R.string.state_on)
+                    } else {
+                        stringResource(R.string.state_suggest_on)
+                    },
+                    actionText = if (permissions.accessibility) null else stringResource(R.string.action_open_settings),
+                    onAction = onRequestAccessibility,
+                    showDivider = true,
                 )
                 PermissionRow(
                     title = stringResource(R.string.perm_usage),
@@ -284,6 +303,7 @@ fun PermissionPage(
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
+    onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
 ) {
     var backProgress by remember { mutableFloatStateOf(0f) }
@@ -349,6 +369,7 @@ fun PermissionPage(
                     onRequestNotifications = onRequestNotifications,
                     onRequestBattery = onRequestBattery,
                     onRequestUsage = onRequestUsage,
+                    onRequestAccessibility = onRequestAccessibility,
                     onOpenAutostart = onOpenAutostart,
                     bottomPadding = 28.dp,
                 )
@@ -369,6 +390,7 @@ fun OnboardingScreen(
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onRequestUsage: () -> Unit,
+    onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
     onFinish: () -> Unit,
     onSkip: () -> Unit,
@@ -421,6 +443,7 @@ fun OnboardingScreen(
                 onRequestNotifications = onRequestNotifications,
                 onRequestBattery = onRequestBattery,
                 onRequestUsage = onRequestUsage,
+                onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenAutostart,
                 modifier = Modifier.weight(1f),
                 bottomPadding = 8.dp,

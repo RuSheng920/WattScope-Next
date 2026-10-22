@@ -36,7 +36,15 @@ Some dual-cell BMS drivers report only one cell's current. Enable **Settings →
 
 ## FPS shows 0 in games
 
-The primary source is **SurfaceFlinger presentation timestamps**; `dumpsys gfxinfo` is only a fallback. A few games use compositing paths that neither source can see, so FPS reads 0 while everything else works. Version 1.0 relied on `gfxinfo` first, which made this far more common.
+The primary source is **SurfaceFlinger presentation timestamps**, falling back to `dumpsys gfxinfo` and then the kernel frame counter (`measured_fps`).
+
+- Most SurfaceView / game rendering paths are visible to SurfaceFlinger
+- Some games or ROMs expose layers without a frame-timestamp buffer (BLAST layers, `Background for` mirrors) — that layer simply reports nothing
+- Auto mode moves on to the next candidate layer; if none works it falls back to the kernel counter, which is **equivalent for a fullscreen game** but not layer-scoped
+
+**To pin a layer yourself**: Settings → FPS source → Scan layers. Each layer in the list was probed once and shows its measured frame rate on the right — a layer without a value will only give you an empty curve. Scan while the game is in the foreground, otherwise its SurfaceView layer will not appear.
+
+Version 1.0 relied on `gfxinfo` first, which made this far more common.
 
 ## How much does recording itself cost?
 

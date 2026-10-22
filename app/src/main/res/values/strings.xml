@@ -105,7 +105,7 @@
     <string name="settings_page_sampling_desc">总开关、采样间隔与双电芯补偿</string>
     <string name="settings_page_overlay">悬浮窗与 OSD</string>
     <string name="settings_page_overlay_desc">悬浮球、OSD 与快捷控制</string>
-    <string name="settings_page_fps_desc">自动跟随前台应用，或手动指定图层</string>
+    <string name="settings_page_fps_desc">自动跟随前台应用，或从扫描结果里指定图层</string>
     <string name="settings_page_service">服务与权限</string>
     <string name="settings_page_service_desc">权限中心、前台服务与保活</string>
     <string name="settings_page_about">关于</string>
@@ -147,15 +147,24 @@
     <string name="settings_osd">OSD 实时浮层</string>
     <string name="settings_osd_desc">两列 HUD，可拖动、轻点切换透明度、不写入记录</string>
     <string name="settings_osd_metrics">OSD 显示项</string>
-    <string name="settings_osd_metrics_desc">已选 %1$d / %2$d 项，轻点切换；面板上轻点可循环透明度</string>
+    <string name="settings_osd_metrics_desc">已选 %1$d / %2$d 项，轻点切换；面板轻点调透明度、长按开关记录</string>
     <string name="settings_section_fps">FPS 数据源</string>
     <string name="settings_fps_auto">自动跟随前台应用</string>
-    <string name="settings_fps_auto_desc">SurfaceView 优先，失败回退</string>
+    <string name="settings_fps_auto_desc">SurfaceView 优先，无数据回退内核计帧</string>
     <string name="settings_scan_layers">扫描 SurfaceFlinger 图层</string>
     <string name="settings_rescan_layers">重新扫描图层</string>
-    <string name="settings_fps_manual_fmt">手动指定图层（%1$d）</string>
     <string name="settings_fps_stack_empty">尚未扫描，点此读取当前图层</string>
-    <string name="settings_fps_none">未扫描到图层：确认已授予 root；游戏需在前台运行时扫描才能看到其 SurfaceView 层。</string>
+    <string name="settings_fps_none">未扫描到图层：确认已授予 root；游戏需在前台运行时扫描才能看到其 SurfaceView 层。列表里只有实测到帧率的层会显示数值——镜像层与合成器内部层没有帧时间戳，选中只会得到空曲线。</string>
+    <string name="settings_fps_current_fmt">自动模式当前使用 %1$s</string>
+    <string name="settings_fps_scanning">正在探测图层帧率</string>
+    <string name="settings_fps_scanning_desc">每个候选跑一次 dumpsys，约需数秒</string>
+    <string name="settings_fps_found_fmt">可探测到帧率 %1$d / 共 %2$d 个</string>
+    <string name="settings_fps_probe_none">无数据</string>
+    <string name="settings_fps_badge_fmt">%1$s fps</string>
+    <string name="fps_layer_kind_surface_view">SurfaceView</string>
+    <string name="fps_layer_kind_main_window">主窗口</string>
+    <string name="fps_layer_kind_other">其他</string>
+    <string name="fps_layer_foreground">当前应用</string>
     <string name="settings_section_service">服务与保活</string>
     <string name="settings_permission_center">权限中心</string>
     <string name="settings_perm_ready_fmt">%1$d / %2$d 项核心权限已就绪</string>
@@ -235,6 +244,8 @@
     <string name="perm_section_background">后台与识别</string>
     <string name="perm_battery">电池优化白名单</string>
     <string name="perm_battery_desc">避免系统在息屏后冻结采样与记录</string>
+    <string name="perm_accessibility">后台常驻服务</string>
+    <string name="perm_accessibility_desc">不读屏幕内容。开启后进程不会被系统速冻，游戏里点悬浮球才有响应</string>
     <string name="perm_usage">使用情况访问</string>
     <string name="perm_usage_desc">用于识别前台应用：FPS 跟随与「退出应用自动停止记录」依赖它</string>
     <string name="perm_autostart">自启动管理</string>
@@ -256,6 +267,8 @@
     <!-- ========== 服务与浮层 ========== -->
     <string name="notif_channel_name">QPT 功耗监控</string>
     <string name="notif_overlay_running">悬浮窗运行中</string>
+    <string name="accessibility_service_label">常驻与悬浮窗</string>
+    <string name="accessibility_service_desc">让 WattScope Next 在后台、尤其是游戏运行时保持存活，悬浮球点击不会被系统冻结。本服务不读取屏幕内容、不模拟点击、不收集任何界面信息，只借用系统绑定维持进程常驻。</string>
     <string name="toast_need_overlay">请先在权限中心授予悬浮窗权限</string>
     <string name="toast_cannot_start">无法开始记录：无可用监控源</string>
     <string name="panel_title">WattScope 控制</string>

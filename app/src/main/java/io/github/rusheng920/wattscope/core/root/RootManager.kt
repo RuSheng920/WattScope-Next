@@ -1,6 +1,7 @@
 package io.github.rusheng920.wattscope.core.root
 
 import com.topjohnwu.superuser.Shell
+import io.github.rusheng920.wattscope.core.root.RootShellPool.Lane
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -24,12 +25,14 @@ class RootManager {
      * 以及需要重新确认「刚在管理器里改过授权」的场景。
      *
      * 已缓存的非 root shell 必须先关闭，否则 libsu 会一直复用它，永远看不到新授权。
+     * 池里的 shell 同样要回收：它们建立于旧授权状态，继续用会一直是失败结果。
      */
     suspend fun probeRoot(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val cached = Shell.getCachedShell()
             if (cached != null && cached.isRoot) return@runCatching true
             cached?.close()
+            RootShellPool.closeAll()
             Shell.getShell().isRoot
         }.getOrDefault(false)
     }
@@ -40,18 +43,31 @@ class RootManager {
     /** 主动申请 root：会弹出 KernelSU / Magisk 的授权对话框，阻塞直到用户选择。 */
     suspend fun requestRoot(): Boolean = probeRoot()
 
-    suspend fun readFile(path: String): String? = withContext(Dispatchers.IO) {
-        val result = Shell.cmd("cat '${path.escapeForShell()}'").exec()
-        result.out.joinToString("\n").takeIf { result.isSuccess }
+    /** 读 sysfs 小文件。默认走 [Lane.SAMPLE]：调用方多是采样循环。 */
+    suspend fun readFile(path: String, lane: Lane = Lane.SAMPLE): String? = withContext(Dispatchers.IO) {
+        RootShellPool.execResult(lane, "cat '${path.escapeForShell()}'")
+            ?.takeIf { it.isSuccess }
+            ?.out
+            ?.joinToString("\n")
     }
 
-    suspend fun writeFile(path: String, value: String): Boolean = withContext(Dispatchers.IO) {
-        Shell.cmd("printf '%s' '${value.escapeForShell()}' > '${path.escapeForShell()}'").exec().isSuccess
-    }
+    /** 写 sysfs。走 [Lane.CONTROL]：写操作不能被 dumpsys 查询堵住。 */
+    suspend fun writeFile(path: String, value: String, lane: Lane = Lane.CONTROL): Boolean =
+        withContext(Dispatchers.IO) {
+            RootShellPool.execResult(
+                lane,
+                "printf '%s' '${value.escapeForShell()}' > '${path.escapeForShell()}'",
+            )?.isSuccess ?: false
+        }
 
-    suspend fun execute(command: String): List<String> = withContext(Dispatchers.IO) {
-        Shell.cmd(command).exec().out
-    }
+    /**
+     * 执行命令并取 stdout。
+     *
+     * **通道要按耗时选**：5Hz 采样留在默认的 [Lane.SAMPLE]；`dumpsys` 这类百毫秒级命令
+     * 必须显式指定 [Lane.QUERY]，否则会把采样循环堵在同一个 shell 队列里。
+     */
+    suspend fun execute(command: String, lane: Lane = Lane.SAMPLE): List<String> =
+        withContext(Dispatchers.IO) { RootShellPool.exec(lane, command) }
 }
 
 /**

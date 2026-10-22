@@ -40,10 +40,12 @@ Any of 11, opt-in:
 
 ### Layout and interaction
 
+- **FPS gets its own row**: frame rate is the one metric you scan at a glance, so it renders as a 30sp monospace number instead of sharing a line
 - **Two-column HUD**: labels left, values right-aligned in fixed-width cells, so digits do not jitter while you read
-- Title row carries a **REC / LIVE** dot so you can tell recording from preview at a glance
+- Title row carries a **REC / LIVE** dot; while recording it shows `REC mm:ss`, so you never have to go back into the app to confirm
 - Draggable anywhere
 - Tap to cycle three opacity levels
+- **Long-press to start / stop recording** (same as the bubble, no need to leave the game)
 - Slow sensors (thermals) hold their last valid value instead of flashing `--`
 
 ## Why neither overlay uses live blur

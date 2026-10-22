@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  保活与悬浮层宿主。
+
+  刻意把权限压到最小：
+  - 只订阅窗口切换事件（typeWindowStateChanged）：既是维持系统绑定的最小集合，
+    也顺带供前台应用判定使用（只读事件自带的包名/类名，不读节点树）；
+  - canRetrieveWindowContent=false —— 不读取界面节点，不注入手势，不模拟点击。
+
+  这是对抗 ROM 墓碑（应用速冻）唯一合法且稳定的路径：无障碍服务的进程由
+  system_server 常驻绑定，不会被 Cached Apps Freezer 及其 OEM 变体冻结。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/accessibility_service_desc"
+    android:notificationTimeout="200"
+    android:packageNames="@null"
+    android:settingsActivity="io.github.rusheng920.wattscope.MainActivity" />

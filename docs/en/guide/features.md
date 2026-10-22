@@ -50,7 +50,7 @@ The settings tab is an **index of categories**: each category opens its own page
 | Appearance & theme | Theme mode, language, liquid glass |
 | Sampling & power | QPT master switch, sample interval, dual-cell compensation |
 | Overlay & OSD | Bubble size and edge snapping, OSD switch and metrics |
-| FPS source | Follow the foreground app, or pin a SurfaceFlinger layer |
+| FPS source | Follows the foreground app; you can also pin a layer from the scan list, which shows each layer's measured frame rate |
 | Service & permissions | Permission center, restart service, battery whitelist, autostart |
 | About | Version and repository link |
 

@@ -107,7 +107,7 @@
     <string name="settings_page_sampling_desc">Master switch, interval and dual-cell compensation</string>
     <string name="settings_page_overlay">Overlay &amp; OSD</string>
     <string name="settings_page_overlay_desc">Bubble, OSD and quick controls</string>
-    <string name="settings_page_fps_desc">Follow the foreground app, or pin a layer</string>
+    <string name="settings_page_fps_desc">Follow the foreground app, or pin a layer from the scan list</string>
     <string name="settings_page_service">Service &amp; permissions</string>
     <string name="settings_page_service_desc">Permission center, foreground service and keep-alive</string>
     <string name="settings_page_about">About</string>
@@ -149,15 +149,24 @@
     <string name="settings_osd">OSD live overlay</string>
     <string name="settings_osd_desc">Two-column HUD: draggable, tap to cycle opacity, never written to records</string>
     <string name="settings_osd_metrics">OSD metrics</string>
-    <string name="settings_osd_metrics_desc">%1$d / %2$d selected, tap to toggle; tap the panel to cycle opacity</string>
+    <string name="settings_osd_metrics_desc">%1$d / %2$d selected, tap to toggle; tap the panel for opacity, long-press to record</string>
     <string name="settings_section_fps">FPS source</string>
     <string name="settings_fps_auto">Follow foreground app</string>
-    <string name="settings_fps_auto_desc">SurfaceView preferred</string>
+    <string name="settings_fps_auto_desc">SurfaceView preferred, kernel counter as fallback</string>
     <string name="settings_scan_layers">Scan SurfaceFlinger layers</string>
     <string name="settings_rescan_layers">Rescan layers</string>
-    <string name="settings_fps_manual_fmt">Manual layer (%1$d)</string>
     <string name="settings_fps_stack_empty">Not scanned yet, tap to read layers</string>
-    <string name="settings_fps_none">No layers found: make sure root is granted; a game must be in the foreground when scanning for its SurfaceView layer to appear.</string>
+    <string name="settings_fps_none">No layers found: make sure root is granted; a game must be in the foreground when scanning for its SurfaceView layer to appear. Only layers that actually returned frames show a value here — mirror and compositor-internal layers carry no frame timestamps, and selecting one yields an empty curve.</string>
+    <string name="settings_fps_current_fmt">Auto currently uses %1$s</string>
+    <string name="settings_fps_scanning">Probing layer frame rates</string>
+    <string name="settings_fps_scanning_desc">One dumpsys per candidate, takes a few seconds</string>
+    <string name="settings_fps_found_fmt">%1$d of %2$d layers report frames</string>
+    <string name="settings_fps_probe_none">No data</string>
+    <string name="settings_fps_badge_fmt">%1$s fps</string>
+    <string name="fps_layer_kind_surface_view">SurfaceView</string>
+    <string name="fps_layer_kind_main_window">Main window</string>
+    <string name="fps_layer_kind_other">Other</string>
+    <string name="fps_layer_foreground">Foreground</string>
     <string name="settings_section_service">Service &amp; keep-alive</string>
     <string name="settings_permission_center">Permission center</string>
     <string name="settings_perm_ready_fmt">%1$d / %2$d core permissions ready</string>
@@ -237,6 +246,8 @@
     <string name="perm_section_background">Background &amp; detection</string>
     <string name="perm_battery">Battery optimization whitelist</string>
     <string name="perm_battery_desc">Keeps the system from freezing sampling and recording when the screen is off</string>
+    <string name="perm_accessibility">Background keep-alive service</string>
+    <string name="perm_accessibility_desc">Never reads screen content. Stops the system freezer from suspending the process, so bubble taps work in games</string>
     <string name="perm_usage">Usage access</string>
     <string name="perm_usage_desc">Identifies the foreground app: FPS following and auto-stop on app exit depend on it</string>
     <string name="perm_autostart">Autostart</string>
@@ -258,6 +269,8 @@
     <!-- ========== Service & overlays ========== -->
     <string name="notif_channel_name">QPT power monitoring</string>
     <string name="notif_overlay_running">Overlay running</string>
+    <string name="accessibility_service_label">Keep-alive &amp; overlay</string>
+    <string name="accessibility_service_desc">Keeps WattScope Next alive in the background, especially while gaming, so bubble taps are not dropped by the system freezer. This service never reads screen content, never simulates taps, and collects no UI data — it only uses the system binding to stay resident.</string>
     <string name="toast_need_overlay">Grant overlay permission in Permission center first</string>
     <string name="toast_cannot_start">Cannot start recording: no monitoring source</string>
     <string name="panel_title">WattScope Controls</string>

@@ -5,6 +5,8 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.SystemClock
 import io.github.rusheng920.wattscope.core.root.RootManager
+import io.github.rusheng920.wattscope.core.root.RootShellPool.Lane
+import io.github.rusheng920.wattscope.core.window.ForegroundTracker
 
 data class ForegroundAppInfo(
     val appName: String,
@@ -15,19 +17,21 @@ data class ForegroundAppInfo(
 /**
  * 前台应用检测。
  *
- * 两条路径，数据源优先级刻意不同：
+ * 三条数据源，按实时性与成本排序：
  *
- * - [foregroundPackage]：采样热路径（FPS 图层定位）。优先 UsageStats `ACTIVITY_RESUMED`
- *   事件流（binder 查询，毫秒级、零 dumpsys），拿不到才回退 root。
- * - [isForeground] / [currentForegroundApp]：记录的生命周期判定。优先 root
- *   `dumpsys topResumedActivity`（实时、权威），回退 UsageStats。
+ * 1. **[ForegroundTracker]**（无障碍窗口事件，推送式、零 shell）。用户开了无障碍就是它，
+ *    应用一切前台立刻知道，没有轮询延迟。
+ * 2. **UsageStats `ACTIVITY_RESUMED`**（binder 查询，毫秒级但**有系统入库延迟**）。
+ * 3. **root `dumpsys activity activities`**（实时权威，但一次全量转储 200~800ms）。
  *
- * 之所以要分开：UsageStats 的 `ACTIVITY_RESUMED` 事件有系统级入库延迟，刚切到前台的应用
- * 常常还没进事件流；若「开始记录」与「是否还在前台」用不同数据源，应用刚切前台的几秒内
- * 两边会给出不同包名，悬浮球记录会被误判成「已离开目标应用」而 1~2 秒内自动停止。
- * 判定路径两端都走 dumpsys 后，二者恒等。
+ * 为什么还要保留两条回退：无障碍是可选权限，没开的时候功能不能瞎。回退顺序在两条路径上
+ * 刻意不同 —— 采样路径（[foregroundPackage]，给 FPS 图层定位用）优先 UsageStats，因为它
+ * 每 tick 都可能问，绝不能起 dumpsys；判定路径（[isForeground] /
+ * [currentForegroundApp]）优先 dumpsys，因为它决定「记录是否该自动停止」，宁可慢也不能错。
  *
- * 两条路径各自带 TTL 缓存：采样循环每 tick 都要问一次，不能每次都起 dumpsys。
+ * 历史上两条路径曾因 UsageStats 的入库延迟给出不同包名，导致记录在应用刚切前台时
+ * 被误判成「已离开」而自动停止。现在第一优先级统一为 [ForegroundTracker]，
+ * 只要无障碍开着，两条路径天然恒等，这个问题不再存在。
  */
 class AppInspector(private val context: Context, private val rootManager: RootManager) {
     // 增量事件游标（UsageStats）：首次（或进程重启后）全量扫描 24 小时，之后只查询新增事件。
@@ -43,10 +47,17 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
     private var verdictAtMs = 0L
 
     /**
-     * 当前前台包名（采样用，带 [maxAgeMs] 缓存）。UsageStats 优先，零 dumpsys 开销。
+     * 当前前台包名（采样用，带 [maxAgeMs] 缓存）。
+     *
+     * 无障碍窗口事件优先且**不看缓存年龄** —— 它是推送式的最新状态，比任何缓存都新。
      */
     suspend fun foregroundPackage(maxAgeMs: Long = DEFAULT_TTL_MS): String? {
         val now = SystemClock.elapsedRealtime()
+        ForegroundTracker.current()?.let {
+            cachedPackage = it
+            cachedAtMs = now
+            return it
+        }
         cachedPackage?.let { if (now - cachedAtMs <= maxAgeMs) return it }
         val pkg = queryForegroundPackage() ?: queryTopResumedPackage() ?: return null
         cachedPackage = pkg
@@ -55,11 +66,19 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
     }
 
     /**
-     * 判定用的当前前台包名：root `dumpsys` 优先（实时权威），回退 UsageStats。
+     * 判定用的当前前台包名：无障碍窗口事件优先，其次 root `dumpsys`，最后 UsageStats。
      * 与 [currentForegroundApp] 同源，保证「记录开始」与「是否还在前台」判定恒等。
      */
     private suspend fun verdictForegroundPackage(maxAgeMs: Long): String? {
         val now = SystemClock.elapsedRealtime()
+        // 窗口事件源永远是最新状态，命中即用，不受缓存年龄限制
+        ForegroundTracker.current()?.let {
+            if (it != verdictPackage) {
+                verdictPackage = it
+                verdictAtMs = now
+            }
+            return it
+        }
         verdictPackage?.let { if (now - verdictAtMs <= maxAgeMs) return it }
         val pkg = queryTopResumedPackage() ?: queryForegroundPackage() ?: return null
         verdictPackage = pkg
@@ -76,9 +95,10 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
         return current == packageName
     }
 
-    /** 记录开始时使用：与 [isForeground] 同源（root 前台查询 → UsageStats），保证前后判定恒等。 */
+    /** 记录开始时使用：与 [isForeground] 同源（窗口事件 → root 前台查询 → UsageStats）。 */
     suspend fun currentForegroundApp(): ForegroundAppInfo {
-        val packageName = queryTopResumedPackage()
+        val packageName = ForegroundTracker.current()
+            ?: queryTopResumedPackage()
             ?: queryForegroundPackage()
             ?: queryLastUsedPackage24h()
             ?: context.packageName
@@ -110,6 +130,7 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
     suspend fun queryTopResumedPackage(): String? {
         val out = rootManager.execute(
             "dumpsys activity activities 2>/dev/null | grep -m1 'topResumedActivity='",
+            lane = Lane.QUERY,
         )
         val line = out.firstOrNull() ?: return null
         val m = Regex("u\\d+\\s+([^/\\s]+)/").find(line) ?: return null
@@ -152,9 +173,8 @@ class AppInspector(private val context: Context, private val rootManager: RootMa
         /**
          * 判定路径的缓存有效期。
          *
-         * 走 root `dumpsys activity activities`（全量转储，比 UsageStats 的 binder 查询重），
-         * 所以只在记录期间才用到，且每 2 秒查一次足够及时 —— 既能感知用户切走应用，
-         * 又不至于让 dumpsys 变成常态开销。
+         * 只用于 dumpsys 回退路径的缓存（无障碍未开启时才会走到）。全量转储比 UsageStats
+         * 的 binder 查询重，每 2 秒一次足够及时：能感知用户切走应用，又不至于变成常态开销。
          */
         const val VERDICT_TTL_MS = 2_000L
     }

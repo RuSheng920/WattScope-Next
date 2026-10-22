@@ -165,6 +165,7 @@ fun QptApp(
     onExportRecord: (Long, Boolean) -> Unit,
     onRequestNotifications: () -> Unit,
     onRequestUsageAccess: () -> Unit,
+    onRequestAccessibility: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val records by viewModel.records.collectAsState()
@@ -175,6 +176,8 @@ fun QptApp(
     val osdMetrics by viewModel.osdMetrics.collectAsState()
     val fpsLayer by viewModel.fpsLayer.collectAsState()
     val fpsLayers by viewModel.fpsLayers.collectAsState()
+    val fpsScanning by viewModel.fpsScanning.collectAsState()
+    val autoFpsLayer by viewModel.autoFpsLayer.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val permissions by viewModel.permissions.collectAsState()
     val glassBottomBar by viewModel.glassBottomBar.collectAsState()
@@ -442,6 +445,8 @@ fun QptApp(
                             SettingsPage.FPS -> FpsSettingsPage(
                                 fpsLayer = fpsLayer,
                                 fpsLayers = fpsLayers,
+                                scanning = fpsScanning,
+                                autoLayer = autoFpsLayer,
                                 onSelectFpsLayer = viewModel::setFpsLayer,
                                 onLoadFpsLayers = viewModel::loadFpsLayers,
                                 bottomPadding = pagePadding,
@@ -516,6 +521,7 @@ fun QptApp(
                 onRequestNotifications = onRequestNotifications,
                 onRequestBattery = onRequestBatteryWhitelist,
                 onRequestUsage = onRequestUsageAccess,
+                onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenMiuiAutostart,
             )
         }
@@ -528,6 +534,7 @@ fun QptApp(
                 onRequestNotifications = onRequestNotifications,
                 onRequestBattery = onRequestBatteryWhitelist,
                 onRequestUsage = onRequestUsageAccess,
+                onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenMiuiAutostart,
                 onFinish = { viewModel.completeOnboarding(probe = true) },
                 onSkip = { viewModel.completeOnboarding(probe = false) },

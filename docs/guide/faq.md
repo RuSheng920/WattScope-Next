@@ -38,11 +38,13 @@ WattScope Next 的处理顺序是：
 
 ## 为什么游戏里 FPS 显示 0？
 
-FPS 主数据源是 **SurfaceFlinger 的呈现时间戳**，回退才是 `dumpsys gfxinfo`。
+FPS 主数据源是 **SurfaceFlinger 的呈现时间戳**，依次回退 `dumpsys gfxinfo`、内核计帧（`measured_fps`）。
 
 - 大部分 SurfaceView / 游戏渲染路径能被 SurfaceFlinger 捕获
-- 少数游戏的合成路径特殊，`gfxinfo` 里也查不到对应帧，两种源都拿不到数据
-- 此时 FPS 显示 0 或空，其余指标不受影响
+- 少数游戏或 ROM 的图层没有帧时间戳缓冲（BLAST 层、`Background for` 镜像层），这一层就取不到数据
+- 自动模式遇到这种层会换下一个候选；换不出结果时用内核计帧兜底，数值在**全屏游戏下等价**，只是口径不是图层级
+
+**想自己指定层**：设置 → FPS 数据源 → 扫描图层。列表里每一层都跑了一次探测，右侧显示实测帧率——没有数值的层选中也只会得到空曲线。游戏在前台时扫描，它的 SurfaceView 层才会出现。
 
 1.0 版本用 `gfxinfo` 作主源，这种情况更常见——这也是重构时换数据源的原因之一。
 

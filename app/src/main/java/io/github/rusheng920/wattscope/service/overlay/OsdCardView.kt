@@ -57,6 +57,49 @@ class OsdCardView(context: Context) : LinearLayout(context) {
     }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
 
+    /**
+     * FPS 主数字行（借 Scene 悬浮窗的取舍：帧率是唯一需要「一眼扫到」的指标，
+     * 挤在指标行里用 11.5sp 显示等于没显示）。数值用 30sp 等宽粗体，
+     * 右侧挂小号单位，指标行里不再重复出现 FPS。
+     */
+    private val fpsHeroValue = TextView(context).apply {
+        text = "--"
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+        setTextColor(ink)
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        includeFontPadding = false
+        gravity = Gravity.END
+        isSingleLine = true
+    }
+    private val fpsHero = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL or Gravity.BOTTOM
+        addView(
+            TextView(context).apply {
+                text = "FPS"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextColor(inkMuted)
+                letterSpacing = 0.14f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                includeFontPadding = false
+            },
+        )
+        addView(fpsHeroValue, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        addView(
+            TextView(context).apply {
+                text = "fps"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextColor(inkMuted)
+                includeFontPadding = false
+            },
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginStart = (4 * density).roundToInt()
+                bottomMargin = (4 * density).roundToInt()
+            },
+        )
+        visibility = GONE
+    }
+
     init {
         orientation = VERTICAL
         setPadding((12 * density).roundToInt(), (10 * density).roundToInt(), (12 * density).roundToInt(), (10 * density).roundToInt())
@@ -98,6 +141,7 @@ class OsdCardView(context: Context) : LinearLayout(context) {
             },
         )
 
+        addView(fpsHero, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         body.addView(emptyText)
     }
@@ -114,11 +158,15 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         currentMetrics = ordered
         valueViews.clear()
         body.removeAllViews()
-        if (ordered.isEmpty()) {
-            body.addView(emptyText)
+        // FPS 单独走 hero 行：同一指标在一张卡里出现两次只会让人以为数据不一致
+        val rows = ordered.filterNot { it == OsdMetric.FPS }
+        val showHero = rows.size < ordered.size
+        fpsHero.visibility = if (showHero) VISIBLE else GONE
+        if (rows.isEmpty()) {
+            if (!showHero) body.addView(emptyText)
             return
         }
-        ordered.forEachIndexed { index, metric ->
+        rows.forEachIndexed { index, metric ->
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -150,10 +198,15 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         }
     }
 
-    /** 绑定一帧采样；[recording] 只影响标题行的状态点颜色。 */
-    fun bind(sample: OsdSample?, recording: Boolean) {
-        // 5Hz 刷新下 title/颜色只在状态翻转时改，避免每帧都触发一次 measure/layout
-        val label = if (recording) "REC" else "LIVE"
+    /**
+     * 绑定一帧采样。
+     *
+     * [recordingElapsedMs] 是本次记录的已进行时长：录制中标题行显示 `REC mm:ss`，
+     * 不用用户回应用里确认「到底在不在录」。
+     */
+    fun bind(sample: OsdSample?, recording: Boolean, recordingElapsedMs: Long = 0L) {
+        // 5Hz 刷新下 title/颜色只在状态翻转（或秒数变化）时改，避免每帧都触发 measure/layout
+        val label = if (recording) "REC ${formatElapsed(recordingElapsedMs)}" else "LIVE"
         if (statusText.text != label) {
             statusText.text = label
             statusText.setTextColor(
@@ -165,11 +218,26 @@ class OsdCardView(context: Context) : LinearLayout(context) {
         }
         if (sample == null) {
             valueViews.values.forEach { if (it.text != "--") it.text = "--" }
+            if (fpsHero.visibility == VISIBLE && fpsHeroValue.text != "--") fpsHeroValue.text = "--"
             return
         }
         valueViews.forEach { (metric, view) ->
             val text = sample.value(metric) ?: "--"
             if (view.text != text) view.text = text
         }
+        if (fpsHero.visibility == VISIBLE) {
+            val text = sample.fps?.let { "%.0f".format(it) } ?: "--"
+            if (fpsHeroValue.text != text) fpsHeroValue.text = text
+        }
+    }
+
+    /** `mm:ss`；超过一小时退化成 `h:mm:ss`，避免 100 分钟显示成 100:00 撑破面板。 */
+    private fun formatElapsed(ms: Long): String {
+        val total = (ms / 1000).coerceAtLeast(0)
+        val hours = total / 3600
+        val minutes = (total % 3600) / 60
+        val seconds = total % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+        else "%02d:%02d".format(minutes, seconds)
     }
 }

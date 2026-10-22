@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 14+ 的 specialUse 前台服务：无时长配额，避免 dataSync 的 6h/24h 限额把采样掐断 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -38,7 +40,30 @@
         <service
             android:name=".service.QptMonitorService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="sustained_power_telemetry" />
+        </service>
+
+        <!--
+            保活与悬浮层宿主。无障碍服务由 system_server 常驻绑定，进程不会进入 CACHED，
+            因此 ROM 的墓碑 / 应用速冻（ColorOS 速冻、HyperOS 墓碑）不会把它冻住；
+            同时以它为 Context 建的窗口走 TYPE_ACCESSIBILITY_OVERLAY，游戏里不会吞触摸。
+            不读取界面内容（canRetrieveWindowContent=false），不做手势注入。
+        -->
+        <service
+            android:name=".service.WattAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!-- 更新安装包在 cacheDir/updates，通过 FileProvider 授权给系统安装器读取 -->
         <provider

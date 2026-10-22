@@ -1,6 +1,7 @@
 package io.github.rusheng920.wattscope.data.repo
 
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
@@ -13,6 +14,7 @@ import androidx.room.withTransaction
 import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.core.auxiliary.AuxReader
 import io.github.rusheng920.wattscope.core.fps.FpsReader
+import io.github.rusheng920.wattscope.core.fps.LayerInfo
 import io.github.rusheng920.wattscope.core.qpt.QptPowerReader
 import io.github.rusheng920.wattscope.core.root.RootManager
 import io.github.rusheng920.wattscope.data.local.AuxSampleDao
@@ -40,6 +42,7 @@ import io.github.rusheng920.wattscope.domain.RecordingState
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.StatusText
 import io.github.rusheng920.wattscope.domain.TempSample
+import io.github.rusheng920.wattscope.service.WattAccessibilityService
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
 import io.github.rusheng920.wattscope.domain.ZoneStats
@@ -81,6 +84,14 @@ class MonitorRepository(
     private var liveJob: Job? = null
     private var activeRecord: RecordEntity? = null
 
+    /**
+     * 当前记录的起始时刻（wall clock，带记录 id 区分同毫秒的两条）。
+     *
+     * 给 OSD 的 `REC mm:ss` 计时用：读这里而不是在浮层里记「翻转到记录中的那一刻」，
+     * 否则「先开记录、后开 OSD」会从打开 OSD 的时刻重新计时。
+     */
+    fun activeRecordingStartMs(): Long? = activeRecord?.startedAtMs
+
     /** 采样缓冲：攒够约 1 秒再一次性提交。仅由采样协程（含其 finally）读写，无需加锁。 */
     private val pendingBatches = mutableListOf<PendingBatch>()
 
@@ -111,6 +122,23 @@ class MonitorRepository(
         prefs.getString("sampling_interval", null)
             ?.let { name -> SamplingInterval.entries.firstOrNull { it.name == name } }
             ?: SamplingInterval.Ms200
+
+    /**
+     * 冻结守卫开关：root 侧常驻 daemon，把本应用从 ROM 的 uid 级冻结里捞出来。
+     *
+     * 默认开启 —— ColorOS / HyperOS 的应用速冻会把「有前台服务但没进系统白名单」
+     * 的应用一起冻住，表现为悬浮球还在屏幕上、点它却毫无反应（触摸事件送不进来）。
+     * 没有 root 时该项静默失效，不弹授权框。
+     */
+    private val _freezeGuardEnabled = MutableStateFlow(prefs.getBoolean("freeze_guard_enabled", true))
+    val freezeGuardEnabledFlow: StateFlow<Boolean> = _freezeGuardEnabled.asStateFlow()
+
+    var freezeGuardEnabled: Boolean
+        get() = _freezeGuardEnabled.value
+        set(value) {
+            prefs.edit().putBoolean("freeze_guard_enabled", value).apply()
+            _freezeGuardEnabled.value = value
+        }
 
     // 悬浮窗开关：Compose 可观察状态（写偏好同时更新 StateFlow，开关 UI 立即响应）
     private val _bubbleEnabled = MutableStateFlow(prefs.getBoolean("bubble_enabled", true))
@@ -277,8 +305,28 @@ class MonitorRepository(
             notifications = notificationManager.areNotificationsEnabled(),
             batteryUnrestricted = powerManager?.isIgnoringBatteryOptimizations(appContext.packageName) ?: false,
             usageAccess = usageGranted,
+            accessibility = isAccessibilityServiceEnabled(),
             isMiui = manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco"),
         )
+    }
+
+    /**
+     * 无障碍服务是否已在系统里启用。
+     *
+     * 只读 `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`（系统维护的已启用列表），
+     * 不去 bind 服务本身 —— 探测不应该产生副作用。列表里存的是短格式
+     * （`pkg/.Class`），个别 ROM 会给全格式，两种都比一次。
+     */
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            appContext.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ).orEmpty()
+        if (enabled.isEmpty()) return false
+        val component = ComponentName(appContext, WattAccessibilityService::class.java)
+        val short = component.flattenToShortString()
+        val full = component.flattenToString()
+        return enabled.split(':').any { it.equals(short, true) || it.equals(full, true) }
     }
 
     private val _osdSample = MutableStateFlow<OsdSample?>(null)
@@ -420,7 +468,11 @@ class MonitorRepository(
     }
 
     /** 枚举 SurfaceFlinger 图层，供设置页手工指定 FPS 数据源。 */
-    suspend fun listFpsLayers(): List<String> = fpsReader.listLayers()
+    /** 扫描可选图层并实测帧率（每个候选一次 dumpsys，只应在用户点「扫描」时调用）。 */
+    suspend fun scanFpsLayers(): List<LayerInfo> = fpsReader.scanLayers()
+
+    /** 自动模式当前实际选中的层；尚未采样过时为 null。 */
+    fun autoFpsPickedLayer(): String? = fpsReader.autoPickedLayer
 
     suspend fun setQptEnabled(enabled: Boolean) {
         if (!qptReader.setEnabled(enabled)) {
@@ -503,10 +555,11 @@ class MonitorRepository(
                 } else null
                 aux?.devicePowerUw?.let { devicePowerUw = it }
 
-                // FPS 走 SurfaceFlinger 呈现帧计数，1s 一次足够，成本远低于每 tick dumpsys
+                // 实时 FPS 走内核计帧节点（零 fork），1s 一次即可；
+                // 落库口径不同（SurfaceFlinger 帧时间戳），在记录循环里单独取
                 if (elapsed - lastFpsMs >= FPS_INTERVAL_MS) {
                     lastFpsMs = elapsed
-                    fpsReader.sample()?.fps?.let { fps = it }
+                    fpsReader.sampleRealtime()?.let { fps = it }
                 }
 
                 // 一次 StateFlow 更新同时喂首页与 OSD，减少 CAS / 对象分配 / Compose 重组
@@ -704,9 +757,10 @@ class MonitorRepository(
                         }
                     }
 
-                    // FPS：SurfaceFlinger 层帧时间戳（全屏游戏等价于游戏帧率），与 SoC 同采样率落库，
-                    // 保证详情页 FPS 曲线与其余监控项逐点对齐。前台包名走 AppInspector 缓存。
-                    val fps = fpsReader.sample()?.fps
+                    // FPS（记录口径）：SurfaceFlinger 帧时间戳，带窗口跨度与帧数，可回溯统计；
+                    // 与 SoC 同采样率落库，保证详情页 FPS 曲线与其余监控项逐点对齐。
+                    // 主页的实时数字走内核计帧（FpsReader.sampleRealtime），两者口径不同，别混用。
+                    val fps = fpsReader.sampleForRecord()?.fps
                     if (fps != null) {
                         lastFps = fps
                         pendingBatches += PendingBatch(wall, emptyList(), null, fps)
