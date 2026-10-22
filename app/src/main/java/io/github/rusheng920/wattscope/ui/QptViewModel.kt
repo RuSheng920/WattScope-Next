@@ -2,6 +2,7 @@ package io.github.rusheng920.wattscope.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.rusheng920.wattscope.data.local.AppSwitchEntity
 import io.github.rusheng920.wattscope.data.local.ClusterFreqEntity
 import io.github.rusheng920.wattscope.data.local.CoreUsageEntity
 import io.github.rusheng920.wattscope.data.local.DdrFreqEntity
@@ -16,13 +17,19 @@ import io.github.rusheng920.wattscope.data.repo.UpdateRepository
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.DetailChartSection
+import io.github.rusheng920.wattscope.domain.FloatKind
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
 import io.github.rusheng920.wattscope.domain.ThemeMode
+import io.github.rusheng920.wattscope.domain.computeFpsMetrics
 import io.github.rusheng920.wattscope.domain.UpdateChannel
 import io.github.rusheng920.wattscope.domain.UpdateState
 import io.github.rusheng920.wattscope.core.fps.LayerInfo
+import io.github.rusheng920.wattscope.core.sysinfo.HardwareStatic
+import io.github.rusheng920.wattscope.core.sysinfo.LiveStatus
+import io.github.rusheng920.wattscope.core.sysinfo.ProcessDetail
+import io.github.rusheng920.wattscope.core.sysinfo.ProcessEntry
 import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -75,6 +82,10 @@ class QptViewModel(
     val osdEnabled: StateFlow<Boolean> = repository.osdEnabledFlow
     val osdMetrics: StateFlow<List<OsdMetric>> = repository.osdMetricsFlow
 
+    /** 独立浮层开关集合（G4）。 */
+    val floatKinds: StateFlow<Set<FloatKind>> = repository.floatKindsFlow
+    fun setFloatKind(kind: FloatKind, enabled: Boolean) = repository.setFloatKind(kind, enabled)
+
     /** FPS 数据源：null = 自动跟随前台应用；非空 = 用户手工指定的 SurfaceFlinger 图层。 */
     val fpsLayer: StateFlow<String?> = repository.fpsLayerFlow
     private val _fpsLayers = MutableStateFlow<List<LayerInfo>>(emptyList())
@@ -103,6 +114,55 @@ class QptViewModel(
         viewModelScope.launch { repository.refreshDeviceState() }
     }
 
+    // ---------- 概览 / 进程 ----------
+
+    private val _hardware = MutableStateFlow<HardwareStatic?>(null)
+
+    /** 静态硬件档案：首次进入概览页读取一次，之后复用。 */
+    val hardware: StateFlow<HardwareStatic?> = _hardware.asStateFlow()
+
+    private val _live = MutableStateFlow<LiveStatus?>(null)
+
+    /** 1Hz 实时快照，仅在概览页可见期间刷新。 */
+    val live: StateFlow<LiveStatus?> = _live.asStateFlow()
+
+    private val _processes = MutableStateFlow<List<ProcessEntry>>(emptyList())
+    val processes: StateFlow<List<ProcessEntry>> = _processes.asStateFlow()
+
+    private val _processLoading = MutableStateFlow(false)
+    val processLoading: StateFlow<Boolean> = _processLoading.asStateFlow()
+
+    /** 由概览页的轮询循环调用；失败不抛出，保留上一帧数据。 */
+    suspend fun pollOverview() {
+        if (_hardware.value == null) {
+            runCatching { _hardware.value = repository.hardwareStatic() }
+        }
+        runCatching { _live.value = repository.liveStatus() }
+    }
+
+    fun refreshHardware() = viewModelScope.launch {
+        runCatching { _hardware.value = repository.hardwareStatic(force = true) }
+        runCatching { _live.value = repository.liveStatus() }
+    }
+
+    fun loadProcesses() = viewModelScope.launch {
+        if (_processLoading.value) return@launch
+        _processLoading.value = true
+        try {
+            _processes.value = repository.processes()
+        } finally {
+            _processLoading.value = false
+        }
+    }
+
+    suspend fun processDetail(pid: Int): ProcessDetail = repository.processDetail(pid)
+
+    fun killProcess(entry: ProcessEntry) = viewModelScope.launch {
+        runCatching { repository.killProcess(entry) }
+        // 结束后立刻重扫一遍，列表状态与真实进程表保持一致
+        _processes.value = runCatching { repository.processes() }.getOrDefault(_processes.value)
+    }
+
     fun refresh() = viewModelScope.launch { repository.refreshDeviceState(force = true) }
     fun setThemeMode(mode: ThemeMode) = repository.setThemeMode(mode)
     fun setGlassBottomBar(enabled: Boolean) = repository.setGlassBottomBar(enabled)
@@ -110,6 +170,25 @@ class QptViewModel(
     fun setGlassPauseRecording(paused: Boolean) = repository.setGlassPauseRecording(paused)
     fun setDualCellMode(enabled: Boolean) = repository.setDualCellMode(enabled)
     fun refreshPermissions() = repository.refreshPermissions()
+
+    // ---------- 一键授权（需 root） ----------
+
+    private val _granting = MutableStateFlow(false)
+    val granting: StateFlow<Boolean> = _granting.asStateFlow()
+
+    /** 上一次一键授权的结果：key → 是否成功；null 表示还没跑过。 */
+    private val _grantReport = MutableStateFlow<Map<String, Boolean>?>(null)
+    val grantReport: StateFlow<Map<String, Boolean>?> = _grantReport.asStateFlow()
+
+    fun grantAllViaRoot() = viewModelScope.launch {
+        if (_granting.value) return@launch
+        _granting.value = true
+        try {
+            _grantReport.value = repository.grantPermissionsViaRoot()
+        } finally {
+            _granting.value = false
+        }
+    }
 
     /** 申请 root：授权成功后立即重扫设备能力，不需要重启应用。 */
     fun requestRoot() = viewModelScope.launch {
@@ -123,6 +202,8 @@ class QptViewModel(
     fun startRecording() = viewModelScope.launch { repository.startRecording() }
     fun stopRecording() = viewModelScope.launch { repository.stopRecording() }
     fun deleteRecord(id: Long) = viewModelScope.launch { repository.deleteRecord(id) }
+    fun deleteRecords(ids: List<Long>) = viewModelScope.launch { repository.deleteRecords(ids) }
+    fun renameRecord(id: Long, title: String?) = viewModelScope.launch { repository.renameRecord(id, title) }
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
     fun setOsdEnabled(enabled: Boolean) { repository.osdEnabled = enabled }
     fun setBubbleSize(size: BubbleSize) { repository.bubbleSize = size }
@@ -185,8 +266,9 @@ class QptViewModel(
             repository.observeGpus(recordId, stride),
             repository.observeDdrFreqs(recordId, stride),
             repository.observeFps(recordId, stride),
-        ) { gpus, ddrFreqs, fpsList ->
-            AuxDataB(gpus, ddrFreqs, fpsList)
+            repository.observeAppSwitches(recordId),
+        ) { gpus, ddrFreqs, fpsList, switches ->
+            AuxDataB(gpus, ddrFreqs, fpsList, switches)
         }
         return combine(
             repository.observeRecord(recordId),
@@ -219,6 +301,10 @@ class QptViewModel(
                 gpuSamples = b.gpus,
                 ddrFreqSamples = b.ddrFreqs,
                 fpsSamples = b.fps,
+                appSwitches = b.switches,
+                // 会话指标跟着同一批降采样数据算：与图表看到的曲线保持一致，
+                // 不与「全量数据算出来的指标」互相打架
+                fpsMetrics = computeFpsMetrics(b.fps.map { it.fps }),
             )
         }
             // 录制进行时其他记录的写入会触发 Room 表级失效、Flow 重发射；
@@ -237,5 +323,6 @@ class QptViewModel(
         val gpus: List<GpuEntity> = emptyList(),
         val ddrFreqs: List<DdrFreqEntity> = emptyList(),
         val fps: List<FpsEntity> = emptyList(),
+        val switches: List<AppSwitchEntity> = emptyList(),
     )
 }

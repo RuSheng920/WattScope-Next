@@ -29,6 +29,13 @@ interface RecordDao {
     @Query("DELETE FROM records WHERE id = :id")
     suspend fun delete(id: Long)
 
+    @Query("DELETE FROM records WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
+    /** 重命名：title 为空串时存 null，界面回退到 appName。 */
+    @Query("UPDATE records SET title = :title WHERE id = :id")
+    suspend fun rename(id: Long, title: String?)
+
     @Query("DELETE FROM records")
     suspend fun deleteAll()
 }
@@ -113,4 +120,10 @@ interface AuxSampleDao {
 
     @Query("SELECT * FROM ddr_freq_samples WHERE recordId = :recordId ORDER BY timestampMs ASC")
     suspend fun getDdrFreqs(recordId: Long): List<DdrFreqEntity>
+
+    @Insert
+    suspend fun insertAppSwitches(events: List<AppSwitchEntity>)
+
+    @Query("SELECT * FROM app_switch_events WHERE recordId = :recordId ORDER BY timestampMs ASC")
+    fun observeAppSwitches(recordId: Long): Flow<List<AppSwitchEntity>>
 }

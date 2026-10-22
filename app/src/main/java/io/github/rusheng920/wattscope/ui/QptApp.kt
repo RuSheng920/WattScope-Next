@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,10 +30,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Delete
@@ -39,11 +43,13 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
@@ -53,6 +59,8 @@ import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -99,10 +107,13 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.rusheng920.wattscope.BuildConfig
 import io.github.rusheng920.wattscope.R
+import io.github.rusheng920.wattscope.data.local.AppSwitchEntity
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.DetailChartSection
+import io.github.rusheng920.wattscope.domain.ExportFormat
+import io.github.rusheng920.wattscope.domain.FpsMetrics
 import io.github.rusheng920.wattscope.domain.StatusText
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.domain.ZoneSample
@@ -162,7 +173,7 @@ fun QptApp(
     onRequestBatteryWhitelist: () -> Unit,
     onOpenMiuiAutostart: () -> Unit,
     onToggleBubble: (Boolean) -> Unit,
-    onExportRecord: (Long, Boolean) -> Unit,
+    onExportRecord: (Long, ExportFormat) -> Unit,
     onRequestNotifications: () -> Unit,
     onRequestUsageAccess: () -> Unit,
     onRequestAccessibility: () -> Unit,
@@ -174,6 +185,7 @@ fun QptApp(
     val bubbleSnapToEdge by viewModel.bubbleSnapToEdge.collectAsState()
     val osdEnabled by viewModel.osdEnabled.collectAsState()
     val osdMetrics by viewModel.osdMetrics.collectAsState()
+    val floatKinds by viewModel.floatKinds.collectAsState()
     val fpsLayer by viewModel.fpsLayer.collectAsState()
     val fpsLayers by viewModel.fpsLayers.collectAsState()
     val fpsScanning by viewModel.fpsScanning.collectAsState()
@@ -191,10 +203,18 @@ fun QptApp(
     val autoUpdateEnabled by viewModel.autoUpdateEnabled.collectAsState()
     val updateChannel by viewModel.updateChannel.collectAsState()
     val lastUpdateCheckMs by viewModel.lastUpdateCheckMs.collectAsState()
+    val hardwareInfo by viewModel.hardware.collectAsState()
+    val liveStatus by viewModel.live.collectAsState()
+    val processList by viewModel.processes.collectAsState()
+    val processLoading by viewModel.processLoading.collectAsState()
+    val granting by viewModel.granting.collectAsState()
+    val grantReport by viewModel.grantReport.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
     var detailId by remember { mutableStateOf<Long?>(null) }
     var permissionsOpen by remember { mutableStateOf(false) }
+    // 进程管理：概览页的二级页，独占整屏（底栏收起，靠顶栏返回）
+    var processOpen by remember { mutableStateOf(false) }
     // 设置二级页：null = 停在设置索引页
     var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
     var tabBackProgress by remember { mutableFloatStateOf(0f) }
@@ -234,6 +254,16 @@ fun QptApp(
         }
     }
 
+    // 概览页可见时才轮询：1Hz 一次 sysfs 批量读，离开页面协程即取消，不留后台采样。
+    // 进程页展开时也停掉 —— 两个页面的数据互不相干，没必要同时压 shell。
+    LaunchedEffect(tab, processOpen) {
+        if (tab != 1 || processOpen) return@LaunchedEffect
+        while (true) {
+            viewModel.pollOverview()
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+
     // HyperOS 大标题随列表滚动折叠：同一 ScrollBehavior 同时挂到 TopAppBar 与内容区
     val topBarScroll = MiuixScrollBehavior()
 
@@ -244,6 +274,14 @@ fun QptApp(
     }
 
     // 预测性返回：二级页 → 设置索引页 → 首页。两级都要有各自的跟手动画。
+    PredictiveBackHandler(enabled = detailId == null && !permissionsOpen && processOpen) { progress ->
+        try {
+            progress.collect { tabBackProgress = it.progress }
+        } finally {
+            tabBackProgress = 0f
+        }
+        processOpen = false
+    }
     PredictiveBackHandler(enabled = detailId == null && !permissionsOpen && settingsPage != null) { progress ->
         try {
             progress.collect { tabBackProgress = it.progress }
@@ -269,8 +307,23 @@ fun QptApp(
             modifier = Modifier.layerBackdrop(glassBackdrop),
             containerColor = Color.Transparent,
             topBar = {
-                when (tab) {
-                    0 -> TopAppBar(
+                when {
+                    // 进程管理是概览的二级页：整屏独占，顶栏只留返回
+                    processOpen -> SmallTopAppBar(
+                        title = stringResource(R.string.overview_open_processes),
+                        navigationIcon = {
+                            MiuixIconButton(onClick = { processOpen = false }) {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_back),
+                                    tint = MiuixTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                        },
+                    )
+
+                    tab == 0 -> TopAppBar(
                         title = "WattScope Next",
                         largeTitle = "WattScope Next",
                         scrollBehavior = topBarScroll,
@@ -296,7 +349,23 @@ fun QptApp(
                         },
                     )
 
-                    1 -> TopAppBar(
+                    tab == 1 -> TopAppBar(
+                        title = stringResource(R.string.nav_overview),
+                        largeTitle = stringResource(R.string.nav_overview),
+                        scrollBehavior = topBarScroll,
+                        actions = {
+                            MiuixIconButton(onClick = viewModel::refreshHardware) {
+                                Icon(
+                                    Icons.Rounded.Refresh,
+                                    contentDescription = stringResource(R.string.action_refresh),
+                                    tint = MiuixTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                        },
+                    )
+
+                    tab == 2 -> TopAppBar(
                         title = stringResource(R.string.nav_history),
                         largeTitle = stringResource(R.string.nav_history),
                         scrollBehavior = topBarScroll,
@@ -340,10 +409,11 @@ fun QptApp(
             },
             bottomBar = {
                 // 二级页独占整屏：底部导航收起，返回靠顶栏箭头与系统返回手势
-                if (!glassBottomBar && settingsPage == null) {
+                if (!glassBottomBar && settingsPage == null && !processOpen) {
                     MiuixBottomBar(
                         items = listOf(
                             BottomItem(stringResource(R.string.nav_dashboard), Icons.Rounded.Speed),
+                            BottomItem(stringResource(R.string.nav_overview), Icons.Rounded.Memory),
                             BottomItem(stringResource(R.string.nav_history), Icons.Rounded.History),
                             BottomItem(stringResource(R.string.nav_settings), Icons.Rounded.Settings),
                         ),
@@ -365,7 +435,17 @@ fun QptApp(
                         alpha = 1f - 0.2f * p
                     },
             ) {
-                when (tab) {
+                if (processOpen) {
+                    ProcessScreen(
+                        entries = processList,
+                        loading = processLoading,
+                        rootGranted = permissions.root == true,
+                        onReload = viewModel::loadProcesses,
+                        onKill = viewModel::killProcess,
+                        onLoadDetail = { pid -> viewModel.processDetail(pid) },
+                        bottomPadding = 24.dp,
+                    )
+                } else when (tab) {
                     0 -> Dashboard(
                         status = state.status,
                         enabled = state.qptEnabled,
@@ -383,10 +463,22 @@ fun QptApp(
                         onOpenPermissions = { permissionsOpen = true },
                     )
 
-                    1 -> History(
+                    1 -> OverviewScreen(
+                        hardware = hardwareInfo,
+                        live = liveStatus,
+                        onOpenProcesses = {
+                            processOpen = true
+                            viewModel.loadProcesses()
+                        },
+                        bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
+                    )
+
+                    2 -> History(
                         records = records,
                         onOpen = { detailId = it },
                         onDelete = viewModel::deleteRecord,
+                        onDeleteMany = viewModel::deleteRecords,
+                        onRename = viewModel::renameRecord,
                         bottomPadding = if (glassBottomBar) 104.dp else 24.dp,
                     )
 
@@ -439,6 +531,8 @@ fun QptApp(
                                 onBubbleSnapToEdge = viewModel::setBubbleSnapToEdge,
                                 onToggleOsd = viewModel::setOsdEnabled,
                                 onOsdMetricsChange = viewModel::setOsdMetrics,
+                                floatKinds = floatKinds,
+                                onToggleFloat = viewModel::setFloatKind,
                                 bottomPadding = pagePadding,
                             )
 
@@ -471,8 +565,11 @@ fun QptApp(
                                 onChannel = viewModel::setUpdateChannel,
                                 onCheckUpdate = viewModel::checkUpdate,
                                 onDownload = viewModel::downloadUpdate,
+                                onOpenLicenses = { settingsPage = SettingsPage.LICENSES },
                                 bottomPadding = pagePadding,
                             )
+
+                            SettingsPage.LICENSES -> LicensesSettingsPage(bottomPadding = pagePadding)
                         }
                     }
                 }
@@ -480,12 +577,13 @@ fun QptApp(
         }
 
         // 悬浮玻璃底栏：覆盖在内容之上，列表滚动时会从玻璃后面穿过
-        if (glassBottomBar && settingsPage == null) {
+        if (glassBottomBar && settingsPage == null && !processOpen) {
             // 外层 Box 负责贴底对齐：FloatingNavigationBar 的 modifier 落在内部 Row 上
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 FloatingGlassBottomBar(
                     items = listOf(
                         BottomItem(stringResource(R.string.nav_dashboard), Icons.Rounded.Speed),
+                        BottomItem(stringResource(R.string.nav_overview), Icons.Rounded.Memory),
                         BottomItem(stringResource(R.string.nav_history), Icons.Rounded.History),
                         BottomItem(stringResource(R.string.nav_settings), Icons.Rounded.Settings),
                     ),
@@ -507,7 +605,7 @@ fun QptApp(
                 chartOrder = chartOrder,
                 onChartOrderChange = viewModel::setDetailChartOrder,
                 onDismiss = { detailId = null },
-                onExport = { asJson -> onExportRecord(id, asJson) },
+                onExport = { format -> onExportRecord(id, format) },
             )
         }
 
@@ -523,6 +621,9 @@ fun QptApp(
                 onRequestUsage = onRequestUsageAccess,
                 onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenMiuiAutostart,
+                onGrantAll = viewModel::grantAllViaRoot,
+                granting = granting,
+                grantReport = grantReport,
             )
         }
 
@@ -536,6 +637,9 @@ fun QptApp(
                 onRequestUsage = onRequestUsageAccess,
                 onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenMiuiAutostart,
+                onGrantAll = viewModel::grantAllViaRoot,
+                granting = granting,
+                grantReport = grantReport,
                 onFinish = { viewModel.completeOnboarding(probe = true) },
                 onSkip = { viewModel.completeOnboarding(probe = false) },
             )
@@ -1423,9 +1527,30 @@ private fun FpsChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?)
     }
 }
 
+/**
+ * 帧时间曲线：把每个采样点的瞬时帧率换算成 `1000 / fps` 毫秒。
+ *
+ * 与 FPS 曲线是同一份数据的另一面 —— FPS 看「跑得顺不顺」，帧时间看「单帧花了多久」，
+ * 后者对卡顿更敏感：120fps → 30fps 在 FPS 轴上只是下了一半，在帧时间轴上是 8.3ms → 33ms。
+ * 采样口径是 5Hz 瞬时值，不是逐帧时间戳，所以曲线是趋势而不是精确的帧耗时分布。
+ */
 @Composable
-private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+private fun FrameTimeChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
+    val fps = detail.fpsSamples.filter { it.fps > 0f }
+    if (fps.isEmpty()) return
+    val label = stringResource(R.string.chart_frametime)
+    TimeSeriesChart(
+        label,
+        listOf(SeriesData(label, palette[2 % palette.size], fps.map { it.timestampMs to 1000f / it.fps })),
+        formatter = { v -> "%.1f ms".format(Locale.US, v) },
+        globalTs = globalTs,
+        onTsChange = onTsChange,
+    )
+}
+
+@Composable
+private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {    val palette = LocalChartColors.current.palette
     detail.devicePowerSamples.takeIf { it.isNotEmpty() }?.let { powers ->
         val label = stringResource(R.string.chart_device_power)
         TimeSeriesChart(
@@ -1506,6 +1631,7 @@ private fun DetailCharts(
             when (section) {
                 DetailChartSection.SOC -> SocChart(detail, samples, globalTs, onTsChange)
                 DetailChartSection.FPS -> FpsChart(detail, globalTs, onTsChange)
+                DetailChartSection.JANK -> FrameTimeChart(detail, globalTs, onTsChange)
                 DetailChartSection.DEVICE_POWER -> DevicePowerChart(detail, globalTs, onTsChange)
                 DetailChartSection.CLUSTER_FREQ -> ClusterFreqChart(detail, globalTs, onTsChange)
                 DetailChartSection.CORE_USAGE -> CoreUsageChart(detail, globalTs, onTsChange)
@@ -1802,22 +1928,99 @@ private fun fitLabel(text: String, maxWidth: Float, paint: android.graphics.Pain
 
 // ---------- 历史 ----------
 
+/**
+ * 记录列表。
+ *
+ * 两种视图共用同一份数据：**全部**按时间倒序，**FPS 会话**只保留有帧率样本的记录
+ * （OpenMonitor 把两者做成独立入口，这里用分段控件切换 —— 数据同源，没必要开第二个页面）。
+ *
+ * 多选：长按进入，选中后单击是勾选而不是打开；顶部出现操作条（全选/重命名/删除）。
+ * 重命名只对单选开放，且留空即恢复应用名。
+ */
 @Composable
 private fun History(
     records: List<RecordEntity>,
     onOpen: (Long) -> Unit,
     onDelete: (Long) -> Unit,
+    onDeleteMany: (List<Long>) -> Unit,
+    onRename: (Long, String?) -> Unit,
     bottomPadding: Dp = 24.dp,
 ) {
+    var fpsOnly by remember { mutableStateOf(false) }
+    var selection by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var renaming by remember { mutableStateOf<RecordEntity?>(null) }
+
+    val visible = remember(records, fpsOnly) {
+        if (fpsOnly) records.filter { (it.avgFps ?: 0f) > 0f } else records
+    }
+
+    fun toggle(id: Long) {
+        selection = if (id in selection) selection - id else selection + id
+    }
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (records.isNotEmpty()) {
+        item {
+            SegmentedControl(
+                options = listOf(
+                    stringResource(R.string.history_filter_all),
+                    stringResource(R.string.history_filter_fps),
+                ),
+                selectedIndex = if (fpsOnly) 1 else 0,
+                onSelect = {
+                    fpsOnly = it == 1
+                    selection = emptySet()
+                },
+            )
+        }
+
+        if (selection.isNotEmpty()) {
+            item {
+                MiuixCard(contentPadding = 10.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.history_selected_fmt, selection.size),
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                        Spacer(Modifier.weight(1f))
+                        MiuixTextButton(
+                            text = if (selection.size == visible.size) {
+                                stringResource(R.string.action_cancel)
+                            } else {
+                                stringResource(R.string.history_select_all)
+                            },
+                            onClick = {
+                                selection = if (selection.size == visible.size) {
+                                    emptySet()
+                                } else {
+                                    visible.map { it.id }.toSet()
+                                }
+                            },
+                        )
+                        if (selection.size == 1) {
+                            MiuixTextButton(
+                                text = stringResource(R.string.action_rename),
+                                onClick = { renaming = visible.firstOrNull { it.id in selection } },
+                            )
+                        }
+                        MiuixTextButton(
+                            text = stringResource(R.string.action_delete),
+                            onClick = {
+                                onDeleteMany(selection.toList())
+                                selection = emptySet()
+                            },
+                        )
+                    }
+                }
+            }
+        } else if (visible.isNotEmpty()) {
             item {
                 Text(
-                    stringResource(R.string.history_count_fmt, records.size),
+                    stringResource(R.string.history_count_fmt, visible.size),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp),
@@ -1825,60 +2028,139 @@ private fun History(
             }
         }
 
-        if (records.isEmpty()) {
+        if (visible.isEmpty()) {
             item {
                 MiuixCard(contentPadding = 0.dp) {
                     EmptyState(
                         icon = Icons.Rounded.History,
-                        title = stringResource(R.string.history_empty_title),
-                        description = stringResource(R.string.history_empty_desc),
+                        title = stringResource(
+                            if (fpsOnly) R.string.history_fps_empty_title else R.string.history_empty_title,
+                        ),
+                        description = stringResource(
+                            if (fpsOnly) R.string.history_fps_empty_desc else R.string.history_empty_desc,
+                        ),
                     )
                 }
             }
         }
 
-        itemsIndexed(records, key = { _, it -> it.id }) { index, record ->
+        itemsIndexed(visible, key = { _, it -> it.id }) { index, record ->
             AnimatedListItem(index = index) {
-                MiuixCard(onClick = { onOpen(record.id) }, contentPadding = 14.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(record.iconPackage ?: record.packageName, Modifier.size(46.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        AppNameText(
-                            record.appName,
-                            record.packageName,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                        )
-                        Text(
-                            "${formatDate(record.startedAtMs)} · ${durationText(record)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatusPill("SOC ${uwToW(record.avgSocPowerUw)}", PillTone.NEUTRAL)
-                            StatusPill(
-                                stringResource(
-                                    R.string.history_fps_fmt,
-                                    record.avgFps?.let { "%.1f".format(Locale.US, it) } ?: "--",
-                                ),
-                                PillTone.NEUTRAL,
-                            )
+                val picked = record.id in selection
+                MiuixCard(contentPadding = 14.dp) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    if (selection.isEmpty()) onOpen(record.id) else toggle(record.id)
+                                },
+                                onLongClick = { selection = selection + record.id },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (selection.isEmpty()) {
+                            AppIcon(record.iconPackage ?: record.packageName, Modifier.size(46.dp))
+                        } else {
+                            Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (picked) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                    contentDescription = null,
+                                    tint = if (picked) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
                         }
-                    }
-                    MiuixIconButton(onClick = { onDelete(record.id) }) {
-                        Icon(
-                            Icons.Rounded.Delete,
-                            contentDescription = stringResource(R.string.action_delete),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp),
-                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            AppNameText(
+                                record.title ?: record.appName,
+                                record.packageName,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                            )
+                            Text(
+                                "${formatDate(record.startedAtMs)} · ${durationText(record)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                StatusPill("SOC ${uwToW(record.avgSocPowerUw)}", PillTone.NEUTRAL)
+                                StatusPill(
+                                    stringResource(
+                                        R.string.history_fps_fmt,
+                                        record.avgFps?.let { "%.1f".format(Locale.US, it) } ?: "--",
+                                    ),
+                                    PillTone.NEUTRAL,
+                                )
+                            }
+                        }
+                        if (selection.isEmpty()) {
+                            MiuixIconButton(onClick = { onDelete(record.id) }) {
+                                Icon(
+                                    Icons.Rounded.Delete,
+                                    contentDescription = stringResource(R.string.action_delete),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
+
+    renaming?.let { target ->
+        // 预填当前名称：空输入框在浅色卡片上几乎看不见，用户会以为对话框坏了
+        var draft by remember(target.id) { mutableStateOf(target.title ?: target.appName) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text(stringResource(R.string.history_rename_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                    Text(
+                        stringResource(R.string.history_rename_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRename(target.id, draft)
+                        renaming = null
+                    },
+                ) {
+                    Text(stringResource(R.string.action_done))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renaming = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
 }
 
 // ---------- 详情页 ----------
@@ -1889,7 +2171,7 @@ private fun DetailPage(
     chartOrder: List<DetailChartSection>,
     onChartOrderChange: (List<DetailChartSection>) -> Unit,
     onDismiss: () -> Unit,
-    onExport: (Boolean) -> Unit,
+    onExport: (ExportFormat) -> Unit,
 ) {
     val visibleZones = remember { mutableStateMapOf<String, Boolean>() }
     // 记录更新会不断产生新的 stats：只补新键，保留用户已做的显隐选择
@@ -1945,8 +2227,9 @@ private fun DetailPage(
                             )
                         }
                     }
-                    MiuixTextButton(text = "JSON", onClick = { onExport(true) })
-                    MiuixTextButton(text = "CSV", onClick = { onExport(false) })
+                    MiuixTextButton(text = "PNG", onClick = { onExport(ExportFormat.PNG) })
+                    MiuixTextButton(text = "JSON", onClick = { onExport(ExportFormat.JSON) })
+                    MiuixTextButton(text = "CSV", onClick = { onExport(ExportFormat.CSV) })
                 }
 
                 LazyColumn(
@@ -1979,7 +2262,17 @@ private fun DetailPage(
                             }
                         }
                     }
+                    item {
+                        AppSwitchTimeline(
+                            record = detail.record,
+                            switches = detail.appSwitches,
+                            endMs = detail.record?.endedAtMs ?: detail.samples.lastOrNull()?.timestampMs ?: 0L,
+                        )
+                    }
                     item { StatGrid(detail.stats, detail.samples.size, detail.avgFps) }
+                    detail.fpsMetrics?.let { metrics ->
+                        item { PerformanceMetricsCard(metrics) }
+                    }
                     item { AvgPowerSection(detail) }
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2052,9 +2345,166 @@ private fun DetailPage(
     }
 }
 
+/**
+ * 会话性能指标卡（对齐 OpenMonitor 会话详情页的六项关键指标）。
+ *
+ * 排版按「先看结论、再看分布」：第一行平均 / 最大 / 最小，第二行稳定性（方差、流畅度、5% Low），
+ * 第三行帧时间与卡顿采样数。数值全部等宽，位数变化时不抖动。
+ */
 @Composable
-private fun AvgPowerSection(detail: DetailUiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun PerformanceMetricsCard(metrics: FpsMetrics) {
+    MiuixCard(contentPadding = 14.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.perf_section_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.perf_sample_count_fmt, metrics.sampleCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PerfCell(stringResource(R.string.perf_avg), "%.1f".format(Locale.US, metrics.avgFps), Modifier.weight(1f))
+                PerfCell(stringResource(R.string.perf_max), "%.1f".format(Locale.US, metrics.maxFps), Modifier.weight(1f))
+                PerfCell(stringResource(R.string.perf_min), "%.1f".format(Locale.US, metrics.minFps), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PerfCell(stringResource(R.string.perf_stddev), "%.2f".format(Locale.US, metrics.stdDev), Modifier.weight(1f))
+                PerfCell(
+                    stringResource(R.string.perf_fluency),
+                    "%.0f%%".format(Locale.US, metrics.fluencyPercent),
+                    Modifier.weight(1f),
+                )
+                PerfCell(stringResource(R.string.perf_low5), "%.1f".format(Locale.US, metrics.low5Fps), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PerfCell(
+                    stringResource(R.string.perf_frame_time),
+                    "%.1f ms".format(Locale.US, metrics.avgFrameTimeMs),
+                    Modifier.weight(1f),
+                )
+                PerfCell(
+                    stringResource(R.string.perf_jank),
+                    stringResource(R.string.perf_jank_fmt, metrics.jankSamples),
+                    Modifier.weight(1f),
+                )
+                Spacer(Modifier.weight(1f))
+            }
+            Text(
+                stringResource(R.string.perf_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 应用切换时间轴（C4）。
+ *
+ * 把「记录期间前台是谁」画成一条按真实时长加权的色带：色带越长，那段停留越久。
+ * 只有一段时直接不渲染 —— 没切换过就没有时间轴可看，占一行反而碍事。
+ *
+ * 数据来自采样循环每 2s 的前台判定；开着「离开应用自动停止」时通常只有一段，
+ * 关掉它做跨应用记录才有完整序列。
+ */
+@Composable
+private fun AppSwitchTimeline(record: RecordEntity?, switches: List<AppSwitchEntity>, endMs: Long) {
+    if (record == null || endMs <= record.startedAtMs) return
+    val segments = remember(record.id, switches, endMs) {
+        val raw = buildList {
+            add(Triple(record.startedAtMs, record.packageName, record.appName))
+            switches.forEach { add(Triple(it.timestampMs, it.packageName, it.appName)) }
+        }.sortedBy { it.first }
+        raw.mapIndexed { i, item ->
+            val end = raw.getOrNull(i + 1)?.first ?: endMs
+            Triple(item.first, end.coerceAtLeast(item.first), item.third)
+        }
+    }
+    if (segments.size < 2) return
+    val palette = LocalChartColors.current.palette
+
+    MiuixCard(contentPadding = 14.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                stringResource(R.string.detail_section_timeline),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp)),
+            ) {
+                segments.forEachIndexed { index, seg ->
+                    val weight = ((seg.second - seg.first) / 1000f).coerceAtLeast(0.4f)
+                    Box(
+                        Modifier
+                            .weight(weight)
+                            .fillMaxHeight()
+                            .background(palette[index % palette.size]),
+                    )
+                }
+            }
+            segments.forEachIndexed { index, seg ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(palette[index % palette.size]),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        seg.third,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        formatDurationShort(seg.second - seg.first),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun formatDurationShort(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+    return if (total >= 60) "%d:%02d".format(total / 60, total % 60) else "${total}s"
+}
+
+@Composable
+private fun PerfCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun AvgPowerSection(detail: DetailUiState) {    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle(stringResource(R.string.detail_section_avg_power))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // 与图表口径一致：SOC 之外按 CPU-L → CPU-M → GPU 的顺序铺开

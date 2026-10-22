@@ -49,9 +49,28 @@ object RootShellPool {
     @Volatile
     private var degraded = false
 
-    /** root 已授权才会建池。两个来源都查：前者看已建立的 shell，后者读 libsu 的静态缓存（都不 fork）。 */
-    private fun rootReady(): Boolean = !degraded &&
-        (Shell.getCachedShell()?.isRoot == true || Shell.isAppGrantedRoot() == true)
+    /** 降级到期时刻：到点后允许再试一次建池。 */
+    @Volatile
+    private var degradedUntilMs = 0L
+
+    /**
+     * root 已授权才会建池。两个来源都查：前者看已建立的 shell，后者读 libsu 的静态缓存（都不 fork）。
+     *
+     * 降级必须**会自愈**：冷启动时如果 su 还没授权，第一次建池会拿到普通 sh 并置 degraded；
+     * 若一直不重试，用户随后在 KernelSU 里点「允许」也没用 —— 界面显示 root 已授权
+     * （libsu 静态状态是 true），实际所有命令仍在非 root 下跑，表现就是「每核负载一直是 0」。
+     * 因此 [DEGRADED_RETRY_MS] 到期后放行一次重建尝试。
+     */
+    private fun rootReady(): Boolean {
+        if (degraded && elapsedRealtime() >= degradedUntilMs) degraded = false
+        return !degraded &&
+            (Shell.getCachedShell()?.isRoot == true || Shell.isAppGrantedRoot() == true)
+    }
+
+    private fun degrade() {
+        degraded = true
+        degradedUntilMs = elapsedRealtime() + DEGRADED_RETRY_MS
+    }
 
     /** 执行命令并取 stdout。失败返回空列表，绝不抛异常——调用方都是采样循环，不能因此中断。 */
     suspend fun exec(lane: Lane, command: String): List<String> =
@@ -81,6 +100,7 @@ object RootShellPool {
     fun closeAll() {
         slots.values.forEach { recycle(it) }
         degraded = false
+        degradedUntilMs = 0L
     }
 
     private fun obtain(slot: Slot): Shell? {
@@ -118,4 +138,9 @@ object RootShellPool {
 
     /** 单条命令超时（秒）。超时后 libsu 会销毁该 shell，下次调用自动重建，避免通道被挂死。 */
     private const val TIMEOUT_SEC = 15L
+
+    /** 降级后的重试间隔：太短会频繁 fork su（可能反复弹授权框），太长用户以为坏了。 */
+    private const val DEGRADED_RETRY_MS = 15_000L
+
+    private fun elapsedRealtime(): Long = android.os.SystemClock.elapsedRealtime()
 }

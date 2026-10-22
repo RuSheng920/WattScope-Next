@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Layers
@@ -79,6 +80,7 @@ import io.github.rusheng920.wattscope.core.fps.LayerInfo
 import io.github.rusheng920.wattscope.core.update.ReleaseInfo
 import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
+import io.github.rusheng920.wattscope.domain.FloatKind
 import io.github.rusheng920.wattscope.domain.GlassIntensity
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.SamplingInterval
@@ -120,6 +122,7 @@ enum class SettingsPage(@StringRes val titleRes: Int) {
     FPS(R.string.settings_section_fps),
     SERVICE(R.string.settings_page_service),
     ABOUT(R.string.settings_page_about),
+    LICENSES(R.string.settings_page_licenses),
 }
 
 /** 二级页共用的列表骨架：16dp 页边距 + 12dp 卡片间距。 */
@@ -459,6 +462,8 @@ fun OverlaySettingsPage(
     onBubbleSnapToEdge: (Boolean) -> Unit,
     onToggleOsd: (Boolean) -> Unit,
     onOsdMetricsChange: (List<OsdMetric>) -> Unit,
+    floatKinds: Set<FloatKind>,
+    onToggleFloat: (FloatKind, Boolean) -> Unit,
     bottomPadding: Dp = 24.dp,
 ) {
     SettingsPageColumn(bottomPadding) {
@@ -559,6 +564,33 @@ fun OverlaySettingsPage(
                                         if (osdMetrics.contains(metric)) osdMetrics - metric else osdMetrics + metric,
                                     )
                                 },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 独立浮层：与上面的 OSD 面板是两种形态 —— 面板并排看多项，胶囊各贴一角只看一个
+        item { SectionTitle(stringResource(R.string.settings_section_floats)) }
+        item {
+            MiuixCard {
+                Column {
+                    Text(
+                        stringResource(R.string.settings_floats_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FloatKind.entries.forEach { kind ->
+                            SelectChip(
+                                text = stringResource(kind.labelRes),
+                                selected = floatKinds.contains(kind),
+                                onClick = { onToggleFloat(kind, !floatKinds.contains(kind)) },
                             )
                         }
                     }
@@ -863,6 +895,7 @@ fun AboutSettingsPage(
     onChannel: (UpdateChannel) -> Unit,
     onCheckUpdate: () -> Unit,
     onDownload: () -> Unit,
+    onOpenLicenses: () -> Unit,
     bottomPadding: Dp = 24.dp,
 ) {
     val context = LocalContext.current
@@ -954,6 +987,24 @@ fun AboutSettingsPage(
                     url = WEBSITE_URL,
                     icon = Icons.Rounded.Language,
                     onClick = { openUrl(context, WEBSITE_URL) },
+                    showDivider = true,
+                )
+                // 许可清单属于「关于这个应用」的一部分，放在项目链接之后，
+                // 而不是塞进设置首页 —— 它是一个下钻页，不是独立功能。
+                ActionRow(
+                    title = stringResource(SettingsPage.LICENSES.titleRes),
+                    subtitle = stringResource(R.string.settings_page_licenses_desc),
+                    icon = Icons.Rounded.Description,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    trailing = {
+                        Icon(
+                            Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                    onClick = onOpenLicenses,
                     showDivider = true,
                 )
             }

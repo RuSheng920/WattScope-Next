@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Layers
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.domain.AppPermissions
+import io.github.rusheng920.wattscope.core.root.PermissionGranter
 import io.github.rusheng920.wattscope.ui.components.CircularProgress
 import io.github.rusheng920.wattscope.ui.components.IconBadge
 import io.github.rusheng920.wattscope.ui.components.MiuixCard
@@ -65,6 +68,7 @@ import io.github.rusheng920.wattscope.ui.components.PillButton
 import io.github.rusheng920.wattscope.ui.components.PillTone
 import io.github.rusheng920.wattscope.ui.components.SectionTitle
 import io.github.rusheng920.wattscope.ui.components.StatusPill
+import io.github.rusheng920.wattscope.ui.theme.LocalStatusColors
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
@@ -87,6 +91,9 @@ fun PermissionCenter(
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
+    onGrantAll: (() -> Unit)? = null,
+    granting: Boolean = false,
+    grantReport: Map<String, Boolean>? = null,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 24.dp,
     intro: String? = stringResource(R.string.perm_intro),
@@ -108,6 +115,20 @@ fun PermissionCenter(
         }
 
         item { PermissionProgressCard(permissions) }
+
+        // root 到手后剩下的都是「root 能代劳」的项：与其让用户跳四个系统页面，不如一次写完
+        if (onGrantAll != null && permissions.root == true &&
+            (!permissions.allSecondaryGranted || grantReport != null)
+        ) {
+            item {
+                QuickGrantCard(
+                    granting = granting,
+                    report = grantReport,
+                    allGranted = permissions.allSecondaryGranted,
+                    onGrantAll = onGrantAll,
+                )
+            }
+        }
 
         item { SectionTitle(stringResource(R.string.perm_section_core)) }
         item {
@@ -290,10 +311,100 @@ fun PermissionCenter(
 }
 
 /**
- * 权限中心二级页：从设置进入，独立于底部 Tab。
- * 预测性返回与详情页一致：按住返回键时页面跟随手势右移缩放。
+ * 一键补全卡：root 已授权后才出现。
+ *
+ * 文案刻意写清「能代劳什么、不能代劳什么」—— 自启动/后台弹出属于厂商私有开关，
+ * 就算有 root 也没有稳定接口；写清楚比让用户点完发现没生效要好。
  */
 @Composable
+private fun QuickGrantCard(
+    granting: Boolean,
+    report: Map<String, Boolean>?,
+    allGranted: Boolean,
+    onGrantAll: () -> Unit,
+) {
+    // 授权成功后整卡收敛成一行确认，不再占着一整个按钮的位置
+    if (allGranted && report != null && report.values.all { it }) {
+        MiuixCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = LocalStatusColors.current.okFg,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.perm_quick_all_done, report.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+    MiuixCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(Icons.Rounded.Bolt, MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        stringResource(R.string.perm_quick_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        stringResource(R.string.perm_quick_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (report != null) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    PermissionGranter.Steps.forEach { step ->
+                        val ok = report[step.key] == true
+                        StatusPill(
+                            text = stepLabel(step),
+                            tone = if (ok) PillTone.OK else PillTone.ERROR,
+                        )
+                    }
+                }
+            }
+
+            PillButton(
+                text = when {
+                    granting -> stringResource(R.string.perm_quick_running)
+                    report == null -> stringResource(R.string.perm_quick_action)
+                    else -> stringResource(R.string.perm_quick_retry)
+                },
+                onClick = onGrantAll,
+                enabled = !granting,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun stepLabel(step: PermissionGranter.Step): String = stringResource(
+    when (step) {
+        PermissionGranter.Step.NOTIFICATIONS -> R.string.perm_quick_step_notifications
+        PermissionGranter.Step.OVERLAY -> R.string.perm_quick_step_overlay
+        PermissionGranter.Step.USAGE -> R.string.perm_quick_step_usage
+        PermissionGranter.Step.BATTERY -> R.string.perm_quick_step_battery
+        PermissionGranter.Step.ACCESSIBILITY -> R.string.perm_quick_step_accessibility
+    },
+)
+
+/**
+ * 权限中心二级页：从设置进入，独立于底部 Tab。
+ * 预测性返回与详情页一致：按住返回键时页面跟随手势右移缩放。
+ */@Composable
 fun PermissionPage(
     permissions: AppPermissions,
     onDismiss: () -> Unit,
@@ -305,6 +416,9 @@ fun PermissionPage(
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
+    onGrantAll: () -> Unit,
+    granting: Boolean,
+    grantReport: Map<String, Boolean>?,
 ) {
     var backProgress by remember { mutableFloatStateOf(0f) }
 
@@ -371,6 +485,9 @@ fun PermissionPage(
                     onRequestUsage = onRequestUsage,
                     onRequestAccessibility = onRequestAccessibility,
                     onOpenAutostart = onOpenAutostart,
+                    onGrantAll = onGrantAll,
+                    granting = granting,
+                    grantReport = grantReport,
                     bottomPadding = 28.dp,
                 )
             }
@@ -392,6 +509,9 @@ fun OnboardingScreen(
     onRequestUsage: () -> Unit,
     onRequestAccessibility: () -> Unit,
     onOpenAutostart: () -> Unit,
+    onGrantAll: () -> Unit,
+    granting: Boolean,
+    grantReport: Map<String, Boolean>?,
     onFinish: () -> Unit,
     onSkip: () -> Unit,
 ) {
@@ -445,6 +565,9 @@ fun OnboardingScreen(
                 onRequestUsage = onRequestUsage,
                 onRequestAccessibility = onRequestAccessibility,
                 onOpenAutostart = onOpenAutostart,
+                onGrantAll = onGrantAll,
+                granting = granting,
+                grantReport = grantReport,
                 modifier = Modifier.weight(1f),
                 bottomPadding = 8.dp,
                 intro = null,

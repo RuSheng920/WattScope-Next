@@ -32,6 +32,9 @@ class AuxReader(private val rootManager: RootManager) {
         val gpuFreqHz: Long? = null,
         val gpuUsagePercent: Float? = null,
         val ddrFreqHz: Long? = null,
+        /** /proc/meminfo：OSD 的「内存」指标用，与概览页同一口径。 */
+        val memTotalKb: Long? = null,
+        val memAvailKb: Long? = null,
     )
 
     suspend fun scanClusters(): List<CpuCluster> {
@@ -166,6 +169,12 @@ class AuxReader(private val rootManager: RootManager) {
         ddrFreqPath?.let {
             commands += readThen("'${it.escapeForShell()}/cur_freq'", "DDR|")
         }
+        // 内存只取两行：/proc/meminfo 是伪文件，整读一次约 2KB、零 fork，
+        // 相对 5Hz 的 sysfs 批量读可以忽略；单独开一条低频通道反而多一次 shell 往返。
+        commands += "mt=; ma=; st=; sf=; while read -r k v rest; do " +
+            "case \"\$k\" in MemTotal:) mt=\$v;; MemAvailable:) ma=\$v;; " +
+            "SwapTotal:) st=\$v;; SwapFree:) sf=\$v;; esac; " +
+            "done < /proc/meminfo; printf 'MEM|%s|%s|%s|%s\\n' \"\$mt\" \"\$ma\" \"\$st\" \"\$sf\""
         if (includeStat) commands += statCommand()
         return commands.joinToString("; ")
     }
@@ -244,6 +253,8 @@ class AuxReader(private val rootManager: RootManager) {
         var gpuFreqHz: Long? = null
         var gpuUsagePercent: Float? = null
         var ddrFreqHz: Long? = null
+        var memTotal: Long? = null
+        var memAvail: Long? = null
         val statLines = mutableListOf<String>()
         lines.forEach { line ->
             when {
@@ -299,6 +310,11 @@ class AuxReader(private val rootManager: RootManager) {
                     ddrFreqHz = line.substringAfter('|').trim().toLongOrNull()
                 }
                 line.startsWith("STAT|") -> statLines += line
+                line.startsWith("MEM|") -> {
+                    val parts = line.split('|')
+                    memTotal = parts.getOrNull(1)?.trim()?.toLongOrNull()
+                    memAvail = parts.getOrNull(2)?.trim()?.toLongOrNull()
+                }
             }
         }
         val temps = mutableListOf<TempSample>()
@@ -316,6 +332,8 @@ class AuxReader(private val rootManager: RootManager) {
             gpuFreqHz = gpuFreqHz,
             gpuUsagePercent = gpuUsagePercent,
             ddrFreqHz = ddrFreqHz,
+            memTotalKb = memTotal,
+            memAvailKb = memAvail,
         )
     }
 

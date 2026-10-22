@@ -44,12 +44,17 @@ Qualcomm Power Telemetry 是高通平台内核暴露的电源计量框架，挂�
     ├── qpt:0:1/  name = cpu-l     ← 小核簇（Cortex-A5xx）
     ├── qpt:0:2/  name = gpu       ← GPU
     ├── qpt:0:3/  name = nsp       ← NPU（Hexagon，无负载时常为 0）
-    ├── qpt:0:4/  name = debug-0   ← 厂商未命名的附加 rail
-    ├── qpt:0:5/  name = debug-2   ← 厂商未命名的附加 rail（负载高，常随大核/DDR 活动）
-    └── qpt:0:6/  name = debug-4   ← 厂商未命名的附加 rail
+    ├── qpt:0:4/  name = debug-0   ← 实测 PMH0110-F S9 / VDD_MXC（多媒体子系统的 CX 轨）
+    ├── qpt:0:5/  name = debug-2   ← 实测 PMH0110-G S5 / VDD_CX（应用处理器核心域）
+    └── qpt:0:6/  name = debug-4   ← 实测 PMH0110-D S7 / VDD_MM（多媒体子系统的 MX 轨）
 ```
 
 > zone 列表**完全动态发现**，不硬编码：不同 SoC 的 zone 数量与命名可以不同。`debug-*` 是高通未映射到具体名称的计量 rail，能量计算方法与其他 zone 完全一致。
+>
+> `debug-N` 的语义已从一加 15 的 dtbo 反编译确认（SM8850 / PMH0110 系列 PMIC），
+> 但它是 OEM 在 `power-zones` 节点里自行分配的**占位名**，跨机型不通用。
+> 溯源方法与验证步骤见 [qpt-rail-verification.md](./qpt-rail-verification.md)，
+> 换机型用 `scripts/qpt_rail_map.py` 重跑一遍即可得到该机型的实际映射。
 
 实测验证：`soc` 的 energy_uj ≈ 所有子 zone 之和（误差来自各文件读取时刻的微小错位）。
 

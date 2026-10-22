@@ -20,6 +20,8 @@ data class RecordEntity(
     val avgNspPowerUw: Long = 0,
     val avgFps: Float? = null,
     val avgSocTempC: Float? = null,
+    /** 用户自定义名称；null 表示沿用 appName。 */
+    val title: String? = null,
 )
 
 @Entity(
@@ -180,4 +182,31 @@ data class FpsEntity(
     val recordId: Long,
     val timestampMs: Long,
     val fps: Float,
+)
+
+/**
+ * 记录期间的前台应用切换事件（时间轴数据）。
+ *
+ * 只在记录态采集：采样循环每 2 秒判定一次前台包名，变化时落一条。
+ * 开着「离开应用自动停止」时通常只会有一条（离开即时结束记录），
+ * 关掉自动停止才能看到完整的切换序列。
+ */
+@Entity(
+    tableName = "app_switch_events",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecordEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recordId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("recordId"), Index("timestampMs")],
+)
+data class AppSwitchEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val recordId: Long,
+    val timestampMs: Long,
+    val packageName: String,
+    val appName: String,
 )

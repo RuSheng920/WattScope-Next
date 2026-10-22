@@ -3,6 +3,7 @@ package io.github.rusheng920.wattscope
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.rusheng920.wattscope.domain.ExportFormat
 import io.github.rusheng920.wattscope.domain.ThemeMode
 import io.github.rusheng920.wattscope.service.QptMonitorService
 import io.github.rusheng920.wattscope.ui.QptApp
@@ -37,7 +39,10 @@ class MainActivity : ComponentActivity() {
     }
 
     // 待写入的导出内容（先选保存位置，再异步生成写入）
-    private var pendingExport: Pair<Long, Boolean>? = null
+    private var pendingExport: Pair<Long, ExportFormat>? = null
+    private val createPngDoc = registerForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        uri?.let { writeExport(it) }
+    }
     private val createJsonDoc = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let { writeExport(it) }
     }
@@ -84,7 +89,7 @@ class MainActivity : ComponentActivity() {
                         // 注意：必须 startService（此前误用 startActivity 导致 ActivityNotFoundException 闪退）
                         startService(Intent(this, QptMonitorService::class.java).setAction(action))
                     },
-                    onExportRecord = { recordId, asJson -> startExport(recordId, asJson) },
+                    onExportRecord = { recordId, format -> startExport(recordId, format) },
                     onRequestNotifications = { requestNotificationPermission() },
                     onRequestUsageAccess = { openUsageAccessSettings() },
                     onRequestAccessibility = { openAccessibilitySettings() },
@@ -115,23 +120,39 @@ class MainActivity : ComponentActivity() {
         (application as QptApplication).repository.setUiVisible(false)
     }
 
-    private fun startExport(recordId: Long, asJson: Boolean) {
-        pendingExport = recordId to asJson
-        val suggestedName = "qpt_record_${recordId}_${System.currentTimeMillis()}.${if (asJson) "json" else "csv"}"
-        if (asJson) createJsonDoc.launch(suggestedName) else createCsvDoc.launch(suggestedName)
+    private fun startExport(recordId: Long, format: ExportFormat) {
+        pendingExport = recordId to format
+        val suggestedName = "qpt_record_${recordId}_${System.currentTimeMillis()}.${format.ext}"
+        when (format) {
+            ExportFormat.JSON -> createJsonDoc.launch(suggestedName)
+            ExportFormat.CSV -> createCsvDoc.launch(suggestedName)
+            ExportFormat.PNG -> createPngDoc.launch(suggestedName)
+        }
     }
 
     private fun writeExport(uri: Uri) {
-        val (recordId, asJson) = pendingExport ?: return
+        val (recordId, format) = pendingExport ?: return
         pendingExport = null
         val repository = (application as QptApplication).repository
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val content = if (asJson) repository.exportRecordJson(recordId) else repository.exportRecordCsv(recordId)
-                    contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(content.toByteArray())
-                    } ?: error(getString(R.string.error_open_output))
+                    // PNG 走 Bitmap.compress，文本走字节写入；两者共用同一个 SAF 输出流
+                    if (format == ExportFormat.PNG) {
+                        val bitmap = repository.exportRecordPng(recordId) ?: error("bitmap")
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        } ?: error(getString(R.string.error_open_output))
+                    } else {
+                        val content = if (format == ExportFormat.JSON) {
+                            repository.exportRecordJson(recordId)
+                        } else {
+                            repository.exportRecordCsv(recordId)
+                        }
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(content.toByteArray())
+                        } ?: error(getString(R.string.error_open_output))
+                    }
                 }
             }
             Toast.makeText(

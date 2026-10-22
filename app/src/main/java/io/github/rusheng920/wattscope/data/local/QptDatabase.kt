@@ -18,8 +18,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GpuEntity::class,
         DdrFreqEntity::class,
         FpsEntity::class,
+        AppSwitchEntity::class,
     ],
-    version = 4,
+    version = 5,
 )
 abstract class QptDatabase : RoomDatabase() {
     abstract fun recordDao(): RecordDao
@@ -27,6 +28,24 @@ abstract class QptDatabase : RoomDatabase() {
     abstract fun auxSampleDao(): AuxSampleDao
 
     companion object {
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 自定义标题：旧记录为 null，界面回退到 appName
+                db.execSQL("ALTER TABLE `records` ADD COLUMN `title` TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `app_switch_events` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`recordId` INTEGER NOT NULL, " +
+                        "`timestampMs` INTEGER NOT NULL, " +
+                        "`packageName` TEXT NOT NULL, " +
+                        "`appName` TEXT NOT NULL, " +
+                        "FOREIGN KEY(`recordId`) REFERENCES `records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_app_switch_events_recordId` ON `app_switch_events` (`recordId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_app_switch_events_timestampMs` ON `app_switch_events` (`timestampMs`)")
+            }
+        }
+
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -127,7 +146,7 @@ abstract class QptDatabase : RoomDatabase() {
             context,
             QptDatabase::class.java,
             "wattscope.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     // WAL + NORMAL：断电最多丢最后一个事务，换来 fsync 次数大幅下降。

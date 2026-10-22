@@ -203,13 +203,16 @@ enum class OsdMetric(val key: String, @StringRes val labelRes: Int) {
     SOC_POWER("soc_power", R.string.osd_metric_soc_power),
     CPU_L_POWER("cpu_l_power", R.string.osd_metric_cpu_l),
     CPU_M_POWER("cpu_m_power", R.string.osd_metric_cpu_m),
+    CPU_USAGE("cpu_usage", R.string.osd_metric_cpu_usage),
     GPU_POWER("gpu_power", R.string.osd_metric_gpu),
     GPU_FREQ("gpu_freq", R.string.osd_metric_gpu_freq),
+    CPU_FREQ("cpu_freq", R.string.osd_metric_cpu_freq),
     FPS("fps", R.string.osd_metric_fps),
     CPU_TEMP("cpu_temp", R.string.osd_metric_cpu_temp),
     GPU_TEMP("gpu_temp", R.string.osd_metric_gpu_temp),
     DDR_TEMP("ddr_temp", R.string.osd_metric_ddr_temp),
     GPU_USAGE("gpu_usage", R.string.osd_metric_gpu_usage),
+    MEM_USAGE("mem_usage", R.string.osd_metric_mem_usage),
     DEVICE_POWER("device_power", R.string.osd_metric_device),
 }
 
@@ -220,6 +223,7 @@ enum class OsdMetric(val key: String, @StringRes val labelRes: Int) {
 enum class DetailChartSection(@StringRes val labelRes: Int) {
     SOC(R.string.chart_soc_power),
     FPS(R.string.chart_fps),
+    JANK(R.string.chart_frametime),
     DEVICE_POWER(R.string.chart_device_power),
     CLUSTER_FREQ(R.string.chart_cluster_freq),
     CORE_USAGE(R.string.chart_core_usage),
@@ -242,6 +246,9 @@ data class OsdSample(
     val gpuTempC: Float? = null,
     val ddrTempC: Float? = null,
     val devicePowerUw: Long? = null,
+    val cpuUsagePercent: Float? = null,
+    val cpuFreqKhz: Long? = null,
+    val memUsedPercent: Float? = null,
 ) {
     /** 将指定监控项格式化为 "标签 值单位" 展示文本；[label] 由调用方按当前语言解析。 */
     fun format(metric: OsdMetric, label: String): String? = value(metric)?.let { "$label $it" }
@@ -256,11 +263,14 @@ data class OsdSample(
         OsdMetric.CPU_M_POWER -> cpuMPowerUw?.let(::uwToW)
         OsdMetric.GPU_POWER -> gpuPowerUw?.let(::uwToW)
         OsdMetric.GPU_FREQ -> gpuFreqHz?.let(::freqToStr)
+        OsdMetric.CPU_FREQ -> cpuFreqKhz?.let { freqToStr(it * 1_000) }
         OsdMetric.FPS -> fps?.let { "%.0f fps".format(it) }
         OsdMetric.CPU_TEMP -> cpuTempC?.let { "%.0f℃".format(it) }
         OsdMetric.GPU_TEMP -> gpuTempC?.let { "%.0f℃".format(it) }
         OsdMetric.DDR_TEMP -> ddrTempC?.let { "%.0f℃".format(it) }
         OsdMetric.GPU_USAGE -> gpuUsagePercent?.let { "%.0f%%".format(it) }
+        OsdMetric.CPU_USAGE -> cpuUsagePercent?.let { "%.0f%%".format(it) }
+        OsdMetric.MEM_USAGE -> memUsedPercent?.let { "%.0f%%".format(it) }
         OsdMetric.DEVICE_POWER -> devicePowerUw?.let(::uwToW)
     }
 

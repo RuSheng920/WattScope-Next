@@ -1,5 +1,6 @@
 package io.github.rusheng920.wattscope.ui
 
+import io.github.rusheng920.wattscope.data.local.AppSwitchEntity
 import io.github.rusheng920.wattscope.data.local.ClusterFreqEntity
 import io.github.rusheng920.wattscope.data.local.CoreUsageEntity
 import io.github.rusheng920.wattscope.data.local.DdrFreqEntity
@@ -9,6 +10,7 @@ import io.github.rusheng920.wattscope.data.local.GpuEntity
 import io.github.rusheng920.wattscope.data.local.RecordEntity
 import io.github.rusheng920.wattscope.data.local.SampleEntity
 import io.github.rusheng920.wattscope.data.local.TempEntity
+import io.github.rusheng920.wattscope.domain.FpsMetrics
 import io.github.rusheng920.wattscope.domain.ZoneStats
 
 data class DetailUiState(
@@ -31,6 +33,9 @@ data class DetailUiState(
     val gpuSamples: List<GpuEntity> = emptyList(),
     val ddrFreqSamples: List<DdrFreqEntity> = emptyList(),
     val fpsSamples: List<FpsEntity> = emptyList(),
+    val fpsMetrics: FpsMetrics? = null,
+    /** 记录期间的前台应用切换序列（时间轴）。 */
+    val appSwitches: List<AppSwitchEntity> = emptyList(),
 ) {
     val hasAuxData: Boolean
         get() = avgDevicePowerUw > 0 || clusterAvgFreqs.isNotEmpty() || coreAvgUsages.isNotEmpty() ||

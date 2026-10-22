@@ -20,6 +20,7 @@ import androidx.core.content.getSystemService
 import io.github.rusheng920.wattscope.R
 import io.github.rusheng920.wattscope.data.repo.MonitorRepository
 import io.github.rusheng920.wattscope.domain.BubbleSize
+import io.github.rusheng920.wattscope.domain.FloatKind
 import io.github.rusheng920.wattscope.domain.OsdSample
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -66,6 +67,10 @@ class OverlayController(
     private var osdParams: WindowManager.LayoutParams? = null
     private var bubbleShownAtMs = 0L
     private var osdSampleJob: Job? = null
+    /** G4 独立浮层：每个指标一个小胶囊窗口，只读、不挡触摸。 */
+    private val floatViews = LinkedHashMap<FloatKind, TextView>()
+    private var floatKindsJob: Job? = null
+    private var floatSampleJob: Job? = null
     private var panelLiveJob: Job? = null
     private var recordingJob: Job? = null
     private var bubbleSizeJob: Job? = null
@@ -92,6 +97,7 @@ class OverlayController(
         if (canShow() && repository.bubbleEnabled) showBubble()
         observeOsdEnabled()
         if (canShow() && repository.osdEnabled) showOsd()
+        observeFloats()
     }
 
     /** 宿主销毁时调用：撤掉全部窗口与订阅。 */
@@ -99,6 +105,9 @@ class OverlayController(
         recordingJob?.cancel()
         bubbleSizeJob?.cancel()
         osdEnabledJob?.cancel()
+        floatKindsJob?.cancel()
+        floatSampleJob?.cancel()
+        clearFloats()
         hideBubble(immediate = true)
         hidePanel()
         hideOsd()
@@ -658,6 +667,104 @@ class OverlayController(
             }
             return true
         }
+    }
+
+    // ---------- 独立浮层（G4）：一指标一窗口 ----------
+
+    /**
+     * 订阅开关与采样。
+     *
+     * 两个 collector 分工明确：开关变化只管增删窗口，采样变化只管改文本。
+     * 合并成一个的话，每帧采样都要跑一次「该不该有窗口」的判断，纯属浪费。
+     */
+    private fun observeFloats() {
+        floatKindsJob?.cancel()
+        floatKindsJob = scope.launch {
+            repository.floatKindsFlow.collect { syncFloats() }
+        }
+        floatSampleJob?.cancel()
+        floatSampleJob = scope.launch {
+            repository.osdSample.collect { renderFloats(it) }
+        }
+    }
+
+    private fun syncFloats() {
+        if (!canShow()) return
+        val wanted = repository.floatKindsFlow.value
+        // 先删后加：保持列的排列顺序与枚举顺序一致，不受开关先后影响
+        FloatKind.entries.forEach { kind ->
+            if (kind !in wanted) floatViews.remove(kind)?.let { view ->
+                runCatching { windowManager.removeView(view) }
+            }
+        }
+        FloatKind.entries.forEach { kind ->
+            if (kind in wanted && !floatViews.containsKey(kind)) addFloat(kind)
+        }
+        reflowFloats()
+    }
+
+    private fun addFloat(kind: FloatKind) {
+        val view = TextView(context).apply {
+            text = context.getString(kind.labelRes)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            includeFontPadding = false
+            val px = (8 * density).roundToInt()
+            setPadding(px, (4 * density).roundToInt(), px, (4 * density).roundToInt())
+            background = GradientDrawable().apply {
+                cornerRadius = 10 * density
+                setColor(Color.argb(0xCC, 0x0E, 0x11, 0x16))
+                setStroke((1 * density).roundToInt(), Color.argb(0x33, 0xFF, 0xFF, 0xFF))
+            }
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            windowType,
+            // 只读浮层：不抢焦点、不接收触摸，绝不吞掉游戏里的点击
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (12 * density).roundToInt()
+        }
+        runCatching { windowManager.addView(view, params) }.onFailure { return }
+        view.tag = params
+        floatViews[kind] = view
+    }
+
+    /** 竖向堆叠：起点在状态栏下方一点，逐个往下挪；窗口高度未知，用固定步长。 */
+    private fun reflowFloats() {
+        val step = (34 * density).roundToInt()
+        var y = (120 * density).roundToInt()
+        FloatKind.entries.forEach { kind ->
+            val view = floatViews[kind] ?: return@forEach
+            val params = view.tag as? WindowManager.LayoutParams ?: return@forEach
+            params.y = y
+            runCatching { windowManager.updateViewLayout(view, params) }
+            y += step
+        }
+    }
+
+    private fun renderFloats(sample: OsdSample?) {
+        if (floatViews.isEmpty()) return
+        floatViews.forEach { (kind, view) ->
+            val text = when (kind) {
+                FloatKind.FPS -> sample?.fps?.let { "FPS %.0f".format(it) } ?: "FPS --"
+                FloatKind.CPU -> "CPU " + (sample?.cpuUsagePercent?.let { "%.0f%%".format(it) } ?: "--")
+                FloatKind.MEMORY -> "RAM " + (sample?.memUsedPercent?.let { "%.0f%%".format(it) } ?: "--")
+                FloatKind.GPU -> "GPU " + (sample?.gpuUsagePercent?.let { "%.0f%%".format(it) } ?: "--")
+                FloatKind.TEMP -> (sample?.cpuTempC?.let { "%.0f℃".format(it) } ?: "--℃")
+            }
+            if (view.text != text) view.text = text
+        }
+    }
+
+    private fun clearFloats() {
+        floatViews.values.forEach { view -> runCatching { windowManager.removeView(view) } }
+        floatViews.clear()
     }
 
     private fun toast(resId: Int) {

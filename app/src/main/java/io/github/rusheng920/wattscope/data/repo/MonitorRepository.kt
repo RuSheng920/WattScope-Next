@@ -16,7 +16,15 @@ import io.github.rusheng920.wattscope.core.auxiliary.AuxReader
 import io.github.rusheng920.wattscope.core.fps.FpsReader
 import io.github.rusheng920.wattscope.core.fps.LayerInfo
 import io.github.rusheng920.wattscope.core.qpt.QptPowerReader
+import io.github.rusheng920.wattscope.core.root.PermissionGranter
 import io.github.rusheng920.wattscope.core.root.RootManager
+import io.github.rusheng920.wattscope.core.sysinfo.HardwareStatic
+import io.github.rusheng920.wattscope.core.sysinfo.LiveStatus
+import io.github.rusheng920.wattscope.core.sysinfo.ProcessDetail
+import io.github.rusheng920.wattscope.core.sysinfo.ProcessEntry
+import io.github.rusheng920.wattscope.core.sysinfo.ProcessReader
+import io.github.rusheng920.wattscope.core.sysinfo.SysInfoReader
+import io.github.rusheng920.wattscope.data.local.AppSwitchEntity
 import io.github.rusheng920.wattscope.data.local.AuxSampleDao
 import io.github.rusheng920.wattscope.data.local.ClusterFreqEntity
 import io.github.rusheng920.wattscope.data.local.CoreUsageEntity
@@ -35,7 +43,9 @@ import io.github.rusheng920.wattscope.domain.AppPermissions
 import io.github.rusheng920.wattscope.domain.BubbleSize
 import io.github.rusheng920.wattscope.domain.CoreUsageSample
 import io.github.rusheng920.wattscope.domain.DetailChartSection
+import io.github.rusheng920.wattscope.domain.FloatKind
 import io.github.rusheng920.wattscope.domain.GlassIntensity
+import io.github.rusheng920.wattscope.domain.computeFpsMetrics
 import io.github.rusheng920.wattscope.domain.OsdMetric
 import io.github.rusheng920.wattscope.domain.OsdSample
 import io.github.rusheng920.wattscope.domain.RecordingState
@@ -76,6 +86,38 @@ class MonitorRepository(
     private val rootManager: RootManager,
 ) {
     private val appInspector = AppInspector(context, rootManager)
+
+    /**
+     * 概览页与进程页的数据源。
+     *
+     * 两者都与记录态解耦：概览 1Hz 只读快照、进程表按需拉取，都不写库、不影响采样节拍。
+     * [sysInfoReader] 内部另建了一个 AuxReader 实例，避免与记录采样共用 `/proc/stat` 差分基准。
+     */
+    private val sysInfoReader = SysInfoReader(rootManager)
+    private val processReader = ProcessReader(context, rootManager)
+    private val permissionGranter = PermissionGranter(rootManager)
+
+    suspend fun hardwareStatic(force: Boolean = false): HardwareStatic = sysInfoReader.readStatic(force)
+    suspend fun liveStatus(): LiveStatus = sysInfoReader.readLive()
+    suspend fun processes(): List<ProcessEntry> = processReader.load()
+    suspend fun killProcess(entry: ProcessEntry): Boolean = processReader.kill(entry)
+    suspend fun processDetail(pid: Int): ProcessDetail = processReader.detail(pid)
+
+    /**
+     * 用 root 一次性补齐其余权限（悬浮窗 / 使用情况访问 / 电池白名单 / 无障碍 / 通知）。
+     *
+     * 自启动属于厂商私有开关，root 也没有稳定接口，仍然要用户自己点，这里不代劳。
+     * @return key → 是否成功，key 见 [io.github.rusheng920.wattscope.core.root.PermissionGranter.Step]
+     */
+    suspend fun grantPermissionsViaRoot(): Map<String, Boolean> {
+        val result = permissionGranter.grantAll(
+            packageName = appContext.packageName,
+            accessibilityService = ComponentName(appContext, WattAccessibilityService::class.java),
+        )
+        refreshPermissions()
+        return result
+    }
+
     private val appContext: Context = context.applicationContext
     private val prefs: SharedPreferences = context.getSharedPreferences("qpt_settings", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -186,6 +228,21 @@ class MonitorRepository(
     // OSD 悬浮窗：开关 + 实时数据（不落库）
     private val _osdEnabled = MutableStateFlow(prefs.getBoolean("osd_enabled", false))
     val osdEnabledFlow: StateFlow<Boolean> = _osdEnabled.asStateFlow()
+
+    /** 独立浮层（G4）：每个指标一个小胶囊，与 OSD 共用 [osdSample] 数据源。 */
+    private val _floatKinds = MutableStateFlow(loadFloatKinds())
+    val floatKindsFlow: StateFlow<Set<FloatKind>> = _floatKinds.asStateFlow()
+
+    fun setFloatKind(kind: FloatKind, enabled: Boolean) {
+        val next = if (enabled) _floatKinds.value + kind else _floatKinds.value - kind
+        prefs.edit().putString("float_kinds", next.joinToString(",") { it.key }).apply()
+        _floatKinds.value = next
+    }
+
+    private fun loadFloatKinds(): Set<FloatKind> {
+        val saved = prefs.getString("float_kinds", null) ?: return emptySet()
+        return saved.split(',').mapNotNull { key -> FloatKind.entries.firstOrNull { it.key == key } }.toSet()
+    }
 
     private val _osdMetrics = MutableStateFlow(loadOsdMetrics())
     val osdMetricsFlow: StateFlow<List<OsdMetric>> = _osdMetrics.asStateFlow()
@@ -365,7 +422,10 @@ class MonitorRepository(
     }
 
     private fun loadOsdMetrics(): List<OsdMetric> {
-        val saved = prefs.getString("osd_metrics", null) ?: return OsdMetric.entries
+        // 默认只开 4 项：指标已经扩到 14 个，全开会把 OSD 撑成一堵墙，
+        // 反而看不清最该看的三个数（功率 / 帧率 / 温度）。其余按需在设置里勾。
+        val saved = prefs.getString("osd_metrics", null)
+            ?: return listOf(OsdMetric.SOC_POWER, OsdMetric.FPS, OsdMetric.CPU_TEMP, OsdMetric.DEVICE_POWER)
         return saved.split(',').mapNotNull { key -> OsdMetric.entries.firstOrNull { it.key == key } }
     }
 
@@ -572,7 +632,7 @@ class MonitorRepository(
                             latestFps = fps ?: s.latestFps,
                         )
                     }
-                    if (_osdEnabled.value) {
+                    if (_osdEnabled.value || _floatKinds.value.isNotEmpty()) {
                         _osdSample.value = buildOsdSample(zones, aux ?: AuxReader.AuxBatch(), fps)
                     }
                 }
@@ -631,6 +691,15 @@ class MonitorRepository(
         val zonePower = zones.associate { it.zoneName.lowercase() to it.effectivePowerUw }
         val temps = aux.temps.associate { it.sensor to it.tempC }
         val prev = lastOsdSample
+        val cpuUsage = if (aux.coreUsages.isEmpty()) null else aux.coreUsages.map { it.usagePercent }.average().toFloat()
+        val cpuFreq = if (aux.clusterFreqs.isEmpty()) null else aux.clusterFreqs.map { it.freqKhz }.average().toLong()
+        val memTotal = aux.memTotalKb
+        val memAvail = aux.memAvailKb
+        val memUsed = if (memTotal != null && memAvail != null && memTotal > 0) {
+            (memTotal - memAvail).toFloat() / memTotal * 100f
+        } else {
+            null
+        }
         return OsdSample(
             // 本轮读到新值用新值；未读到（采样周期慢/瞬时失败）保留上次值，避免该行消失
             socPowerUw = zonePower["soc"] ?: prev?.socPowerUw,
@@ -644,6 +713,9 @@ class MonitorRepository(
             gpuTempC = temps["gpu"] ?: prev?.gpuTempC,
             ddrTempC = temps["ddr"] ?: prev?.ddrTempC,
             devicePowerUw = aux.devicePowerUw ?: prev?.devicePowerUw,
+            cpuUsagePercent = cpuUsage ?: prev?.cpuUsagePercent,
+            cpuFreqKhz = cpuFreq ?: prev?.cpuFreqKhz,
+            memUsedPercent = memUsed ?: prev?.memUsedPercent,
         ).also { lastOsdSample = it }
     }
 
@@ -725,6 +797,8 @@ class MonitorRepository(
             var lastUiUpdateMs = 0L
             var lastFps: Float? = null
             var lastDevicePowerUw: Long? = null
+            // 应用切换时间轴：记录当前前台包名，变化时落一条事件
+            var lastFgPackage = recordPackage
             // 记录起点（elapsedRealtime 基准）：自动停止的宽限期从这里算起
             val recordingStartedAtMs = SystemClock.elapsedRealtime()
             try {
@@ -742,7 +816,7 @@ class MonitorRepository(
                         pendingBatches += PendingBatch(wall, qptSamples, auxBatch)
 
                         // OSD 悬浮窗：aux 每 tick 都新，读取失败时用上次值兜底
-                        if (_osdEnabled.value) {
+                        if (_osdEnabled.value || _floatKinds.value.isNotEmpty()) {
                             _osdSample.value = buildOsdSample(qptSamples, auxBatch, lastFps)
                         }
                         // UI 节流：合并为一次 StateFlow 更新，减少 CAS + 对象分配 + Compose 重组
@@ -770,13 +844,31 @@ class MonitorRepository(
                         }
                     }
 
-                    // 悬浮窗自动停止：离开被记录应用即停（每 2s 检查一次）
-                    if (autoStopOnAppExit && elapsed - lastAppCheckMs >= 2_000) {
+                    // 每 2s 判定一次前台：既是「离开即停」的依据，也是应用切换时间轴的数据源。
+                    if (elapsed - lastAppCheckMs >= 2_000) {
                         lastAppCheckMs = elapsed
+                        // 采样路径走轻量判定（tracker → UsageStats），拿不到才为空
+                        val fg = appInspector.foregroundPackage(2_000)
+                        if (fg != null && fg != lastFgPackage) {
+                            lastFgPackage = fg
+                            runCatching {
+                                auxSampleDao.insertAppSwitches(
+                                    listOf(
+                                        AppSwitchEntity(
+                                            recordId = recordId,
+                                            timestampMs = wall,
+                                            packageName = fg,
+                                            appName = appLabel(fg),
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
                         // 宽限期：开始记录后的前几秒内不做「已离开」判定。
                         // 此刻目标应用刚获得焦点，系统侧的前台状态（UsageStats 事件、
                         // dumpsys 任务栈）可能还没稳定，此时比较包名容易误判并立刻结束记录。
-                        if (elapsed - recordingStartedAtMs >= APP_EXIT_GRACE_MS &&
+                        if (autoStopOnAppExit &&
+                            elapsed - recordingStartedAtMs >= APP_EXIT_GRACE_MS &&
                             !appInspector.isForeground(recordPackage)
                         ) {
                             break
@@ -921,6 +1013,45 @@ class MonitorRepository(
     }
 
     suspend fun deleteRecord(id: Long) = recordDao.delete(id)
+
+    /** 批量删除（多选模式）。单条 SQL，不逐条往返。 */
+    suspend fun deleteRecords(ids: List<Long>) {
+        if (ids.isNotEmpty()) recordDao.deleteByIds(ids)
+    }
+
+    /** 重命名记录；空白串视为清除自定义名，回退到 appName。 */
+    /**
+     * 生成记录分享图。数据取「全量 fps 曲线」，不用详情页的降采样版本 ——
+     * 分享图是给存档用的，曲线细节越多越好，而它只生成一次，不在乎多读几千行。
+     */
+    suspend fun exportRecordPng(recordId: Long): android.graphics.Bitmap? {
+        val record = recordDao.getRecord(recordId) ?: return null
+        val fps = auxSampleDao.getFps(recordId)
+        val endMs = record.endedAtMs ?: fps.lastOrNull()?.timestampMs ?: record.startedAtMs
+        return io.github.rusheng920.wattscope.core.export.RecordReportRenderer.render(
+            title = record.title ?: record.appName,
+            packageName = record.packageName,
+            startedAtMs = record.startedAtMs,
+            durationMs = (endMs - record.startedAtMs).coerceAtLeast(0),
+            metrics = computeFpsMetrics(fps.map { it.fps }),
+            avgSocPowerUw = record.avgSocPowerUw,
+            deviceModel = Build.MODEL ?: "Android",
+            fpsPoints = fps.map { it.timestampMs to it.fps },
+            versionName = io.github.rusheng920.wattscope.BuildConfig.VERSION_NAME,
+        )
+    }
+
+    suspend fun renameRecord(id: Long, title: String?) {
+        recordDao.rename(id, title?.trim()?.takeIf { it.isNotBlank() })
+    }
+
+    /** 记录期间的前台应用切换序列（时间轴）。 */
+    fun observeAppSwitches(recordId: Long) = auxSampleDao.observeAppSwitches(recordId)
+
+    private fun appLabel(pkg: String): String = runCatching {
+        val pm = appContext.packageManager
+        pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+    }.getOrDefault(pkg)
 
     suspend fun deleteAll() = recordDao.deleteAll()
 
