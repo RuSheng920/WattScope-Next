@@ -13,6 +13,14 @@ run-name: beta · ${{ github.ref_name }}
 # 而 `v*` 会匹配任何以 v 开头的标签 —— 用 `v1.2.3-beta.1` 会同时触发两个工作流、
 # 照样建出 Release。`beta/` 前缀则与 `v*` 完全不重叠，互不干扰。
 #
+# prerelease 只保留最新一个：应用内 Beta 通道按版本号取最高者，旧 prerelease
+# 堆在 Releases 列表里只会让人下错包。发布成功后自动删除其它 beta/* 的
+# prerelease 及其 git 标签；正式 Release 不是 prerelease，天然不受影响。
+#
+# prerelease 正文：优先取标签提交里的 `beta-notes/<version>.md`（真实更新日志，
+# 只进临时提交不进 main —— README 是主页、docs/ 是官网，都不该被测试版污染），
+# 取不到退化成通用占位文案。见 scripts/beta_release_body.py。
+#
 # 签名单独成一条链路：测试版必须用 release.jks 签名，否则与已装的正式版
 # 签名不一致，无法覆盖安装。
 on:
@@ -168,6 +176,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # 正文来源：beta-notes/<version>.md（随标签提交）优先，缺失退化为通用文案。
+      # 用脚本而不是在 workflow 里写 heredoc：能本地直接跑，YAML 缩进与
+      # ${{ }} 表达式不纠缠。正式版的对应逻辑见 extract_release_notes.py。
+      - name: Resolve beta release notes
+        run: |
+          python3 scripts/beta_release_body.py "${{ steps.apk.outputs.version }}" > release_body.md
+          head -3 release_body.md
+
       # Actions 资产匿名不可下载，应用内「Beta 通道」无从获取安装包。
       # 因此测试版额外建一个 **prerelease** Release：正式通道（只取非 prerelease）
       # 看不到它，Beta 通道能看到并按版本号参与比较。
@@ -177,11 +193,29 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: WattScope Next v${{ steps.apk.outputs.version }} Beta
-          body: |
-            Beta build for early testing. Enable the Beta channel under
-            Settings → About to receive this version in-app.
-
-            测试版构建，仅供尝鲜；在「设置 → 关于 → 更新通道」选择 Beta 版即可收到。
+          body_path: release_body.md
           files: WattScope-Next-v${{ steps.apk.outputs.version }}.apk
           prerelease: true
           fail_on_unmatched_files: true
+
+      # 先发布、后清理：万一发布失败，旧 prerelease 还在，不至于一个都不剩。
+      # gh release list 的 --jq 过滤同时要求 isPrerelease 与 beta/ 前缀，
+      # 双保险，绝不误删正式 Release。删除失败只警告不中断 —— 清理是锦上添花，
+      # 不该让已经发布成功的 beta 红字。
+      - name: Prune stale beta prereleases
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          CURRENT="${{ github.ref_name }}"
+          gh release list --limit 200 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease and (.tagName | startswith("beta/"))) | .tagName' \
+            | while read -r tag; do
+                [ -z "$tag" ] && continue
+                [ "$tag" = "$CURRENT" ] && continue
+                echo "::notice::prune stale prerelease $tag"
+                gh release delete "$tag" --yes --cleanup-tag \
+                  || echo "::warning::delete $tag failed, skipped"
+              done
+          echo "prune done"
