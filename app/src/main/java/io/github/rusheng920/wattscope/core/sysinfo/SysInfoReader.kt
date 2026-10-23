@@ -142,10 +142,12 @@ class SysInfoReader(private val rootManager: RootManager) {
 
     private suspend fun ensureScanned() {
         if (scanned) return
-        clusters = runCatching { aux.scanClusters() }.getOrDefault(emptyList())
-        sensors = runCatching { aux.scanTempZones() }.getOrDefault(TempSensors())
-        gpu = runCatching { aux.scanGpuSensor() }.getOrNull()
-        ddrPath = runCatching { aux.scanDdrFreqPath() }.getOrNull()
+        // 一次 su 往返拿完簇/温区/GPU/DDR 拓扑（旧实现 4 次串行扫描，概览页首帧要等 0.3~1s）
+        val scan = runCatching { aux.scanAll() }.getOrDefault(AuxReader.ScanResult())
+        clusters = scan.clusters
+        sensors = scan.sensors
+        gpu = scan.gpu
+        ddrPath = scan.ddrFreqPath
         scanned = true
     }
 

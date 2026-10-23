@@ -21,6 +21,21 @@ class QptPowerReader(
 
     suspend fun isEnabled(): Boolean = rootManager.readFile("$qptRoot/enabled")?.trim() == "1"
 
+    /**
+     * 可用性与开关状态一次往返拿完（启动路径用）。
+     * @return Pair(available, enabled)；enabled 仅在 available 为真时可能为真。
+     */
+    suspend fun probeStatus(): Pair<Boolean, Boolean> {
+        val out = rootManager.execute(
+            "a=0; [ -d '$qptRoot/' ] && a=1; e=; " +
+                "read -r e 2>/dev/null < '$qptRoot/enabled'; echo \"\$a|\$e\"",
+            lane = Lane.QUERY,
+        ).firstOrNull()?.trim().orEmpty()
+        val available = out.substringBefore('|').trim() == "1"
+        val enabled = available && out.substringAfter('|').trim() == "1"
+        return available to enabled
+    }
+
     suspend fun setEnabled(enabled: Boolean): Boolean =
         rootManager.writeFile("$qptRoot/enabled", if (enabled) "1" else "0", lane = Lane.CONTROL)
 

@@ -1,5 +1,6 @@
 package io.github.rusheng920.wattscope.ui
 
+import android.util.LruCache
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -79,6 +80,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1031,16 +1033,21 @@ private fun ProgressBarMini(fraction: Float, color: Color) {
 
 // ---------- 应用图标 / 名称 ----------
 
+/** 应用图标内存缓存：History 滚动 / 详情页反复打开时，避免对同一包名重复解码图标。 */
+private val appIconCache = LruCache<String, ImageBitmap>(48)
+
 @Composable
 private fun AppIcon(packageName: String?, modifier: Modifier) {
     val context = LocalContext.current
-    var bitmap by remember(packageName) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    LaunchedEffect(packageName) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                val name = packageName?.takeIf { it.isNotBlank() } ?: context.packageName
-                context.packageManager.getApplicationIcon(name).toBitmap().asImageBitmap()
-            }.getOrNull()
+    val key = packageName?.takeIf { it.isNotBlank() } ?: context.packageName
+    var bitmap by remember(key) { mutableStateOf(appIconCache.get(key)) }
+    LaunchedEffect(key) {
+        if (bitmap == null) {
+            bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.packageManager.getApplicationIcon(key).toBitmap().asImageBitmap()
+                }.getOrNull()?.also { appIconCache.put(key, it) }
+            }
         }
     }
     Box(
@@ -1094,6 +1101,16 @@ private data class CrosshairState(
     val touchY: Float,
 )
 
+/**
+ * 图表刻度文字 Paint：按主题色缓存。Canvas 重绘（滚动、十字光标拖动、录制中 2Hz 刷新）
+ * 每次都会走到 drawSeriesChart，旧实现每次重绘新建一个 Paint。
+ */
+@Composable
+private fun rememberChartTextPaint(labelColor: Color): android.graphics.Paint =
+    remember(labelColor) {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 25f }
+    }.also { it.color = labelColor.toArgb() }
+
 @Composable
 private fun TimeSeriesChart(
     title: String,
@@ -1116,17 +1133,28 @@ private fun TimeSeriesChart(
     val density = LocalDensity.current
     val chartHeightPx = with(density) { 160.dp.toPx() }
     val chartColors = LocalChartColors.current
+    // 刻度文字 Paint 按主题缓存，避免每次 Canvas 重绘（拖动十字光标 / 2Hz 数据刷新）都新建
+    val textPaint = rememberChartTextPaint(chartColors.label)
 
     val refSeries = series.maxByOrNull { it.points.size }
     val refSize = refSeries?.points?.size ?: 0
     val refTsList = remember(series) { refSeries?.points?.map { it.first } ?: emptyList() }
     val allPoints = remember(series, rightSeries) { series.flatMap { it.points } + (rightSeries?.points ?: emptyList()) }
-    val minTs = allPoints.minOfOrNull { it.first } ?: 0L
-    val maxTs = allPoints.maxOfOrNull { it.first } ?: minTs
-    val durationMs = (maxTs - minTs).coerceAtLeast(1L)
-    val crosshairIndex = globalTs?.let { ts ->
-        refTsList.indexOf(ts).takeIf { it >= 0 } ?: nearestByTs(ts, refTsList)
+    // min/max 一次遍历算出并随数据缓存：旧实现每次重组都对 allPoints 全量扫描两遍，
+    // 3000+ 点的图在十字光标拖动时每帧都要重扫
+    val tsRange = remember(allPoints) {
+        var mn = Long.MAX_VALUE
+        var mx = Long.MIN_VALUE
+        allPoints.forEach { p ->
+            if (p.first < mn) mn = p.first
+            if (p.first > mx) mx = p.first
+        }
+        if (mn > mx) 0L to 0L else mn to mx
     }
+    val minTs = tsRange.first
+    val maxTs = tsRange.second
+    val durationMs = (maxTs - minTs).coerceAtLeast(1L)
+    val crosshairIndex = globalTs?.let { ts -> nearestByTs(ts, refTsList) }
     val showTooltip = interactive && globalTs != null && crosshairIndex != null
 
     MiuixCard(contentPadding = 14.dp) {
@@ -1158,6 +1186,7 @@ private fun TimeSeriesChart(
                 drawSeriesChart(
                     series, formatter, crosshairIndex, minTs, durationMs, rightSeries, fixedMax,
                     rightFormatter, rightFixedMax, yTickCount, rightTickCount, chartColors,
+                    textPaint = textPaint,
                 )
             }
             if (showTooltip) {
@@ -1224,16 +1253,22 @@ private fun ChartAverages(
     rightSeries: SeriesData? = null,
     rightFormatter: (Float) -> String = { v -> "%.0f%%".format(Locale.US, v) },
 ) {
+    // 均值只随数据变化重算：旧实现每次重组都对全量点求一次 average（3000+ 点的图）
+    val leftAvgs = remember(series) {
+        series.map { s -> s to (if (s.points.isEmpty()) null else s.points.map { it.second }.average().toFloat()) }
+    }
+    val rightAvg = remember(rightSeries) {
+        rightSeries?.takeIf { it.points.isNotEmpty() }
+            ?.let { s -> s to s.points.map { it.second }.average().toFloat() }
+    }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        series.forEach { s ->
-            if (s.points.isNotEmpty()) {
-                AvgChip(s.name, formatter(s.points.map { it.second }.average().toFloat()), s.color)
+        leftAvgs.forEach { (s, avg) ->
+            if (avg != null) {
+                AvgChip(s.name, formatter(avg), s.color)
             }
         }
-        rightSeries?.let { s ->
-            if (s.points.isNotEmpty()) {
-                AvgChip(s.name, rightFormatter(s.points.map { it.second }.average().toFloat()), s.color)
-            }
+        rightAvg?.let { (s, avg) ->
+            AvgChip(s.name, rightFormatter(avg), s.color)
         }
     }
 }
@@ -1260,16 +1295,17 @@ private fun nearestTsIndex(touchX: Float, width: Float, tsList: List<Long>): Int
 
 private fun nearestByTs(ts: Long, tsList: List<Long>): Int? {
     if (tsList.isEmpty()) return null
-    var best = 0
-    var bestDiff = Long.MAX_VALUE
-    tsList.forEachIndexed { i, t ->
-        val diff = kotlin.math.abs(t - ts)
-        if (diff < bestDiff) {
-            bestDiff = diff
-            best = i
-        }
+    // tsList 按时间升序：二分找最近点。旧实现线性全扫，十字光标激活时每次重组都是 O(n)
+    var lo = 0
+    var hi = tsList.lastIndex
+    while (lo < hi) {
+        val mid = (lo + hi) / 2
+        if (tsList[mid] < ts) lo = mid + 1 else hi = mid
     }
-    return best
+    if (lo == 0) return 0
+    val prev = tsList[lo - 1]
+    val cur = tsList[lo]
+    return if (ts - prev <= cur - ts) lo - 1 else lo
 }
 
 private fun crosshairX(ts: Long, minTs: Long, durationMs: Long, widthPx: Int): Float {
@@ -1368,6 +1404,7 @@ private fun DrawScope.drawSeriesChart(
     yTickCount: Int = 8,
     rightTickCount: Int = 7,
     colors: ChartColors,
+    textPaint: android.graphics.Paint,
 ) {
     val left = ChartLeftPadding
     val right = size.width - ChartRightPadding
@@ -1375,18 +1412,20 @@ private fun DrawScope.drawSeriesChart(
     val bottom = size.height - ChartBottomPadding
     val chartWidth = (right - left).coerceAtLeast(1f)
     val chartHeight = (bottom - top).coerceAtLeast(1f)
-    val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = colors.label.toArgb()
-        textSize = 25f
-    }
+    textPaint.color = colors.label.toArgb()
 
     drawLine(colors.axis, Offset(left, top), Offset(left, bottom), strokeWidth = 2f)
     drawLine(colors.axis, Offset(left, bottom), Offset(right, bottom), strokeWidth = 2f)
 
-    val allPoints = series.flatMap { it.points } + (rightSeries?.points ?: emptyList())
-    if (allPoints.isEmpty()) return
+    // 单遍求最大值：旧实现用 flatMap 把全部点拷成新 List 再 maxOf，
+    // 3000+ 点的图每次重绘都白分配一份全量点表
+    var hasPoints = false
+    var dataMax = 0f
+    series.forEach { s -> s.points.forEach { p -> hasPoints = true; if (p.second > dataMax) dataMax = p.second } }
+    rightSeries?.points?.forEach { p -> hasPoints = true; if (p.second > dataMax) dataMax = p.second }
+    if (!hasPoints) return
 
-    val maxValue = max(1f, fixedMax ?: allPoints.maxOf { it.second })
+    val maxValue = max(1f, fixedMax ?: dataMax)
     val rightMax = if (rightSeries != null) max(1f, rightFixedMax ?: (rightSeries.points.maxOfOrNull { it.second } ?: 1f)) else 0f
 
     // niceTicks 的末刻度是步长整数倍且 >= maxValue，用它当轴上界，曲线才不会顶出绘图区
@@ -1513,21 +1552,25 @@ private fun SocChart(
     globalTs: Long?,
     onTsChange: (Long?) -> Unit,
 ) {
-    ZoneCharts(detail, samples.filter { it.zoneName.equals("SOC", true) }, globalTs, onTsChange)
+    ZoneCharts(detail, remember(samples) { samples.filter { it.zoneName.equals("SOC", true) } }, globalTs, onTsChange)
 }
 
 @Composable
 private fun FpsChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
-    detail.fpsSamples.takeIf { it.isNotEmpty() }?.let { fps ->
-        TimeSeriesChart(
-            "FPS",
-            listOf(SeriesData("FPS", palette[0], fps.map { it.timestampMs to it.fps })),
-            formatter = { v -> "%.1f".format(Locale.US, v) },
-            globalTs = globalTs,
-            onTsChange = onTsChange,
-        )
+    val fps = detail.fpsSamples
+    if (fps.isEmpty()) return
+    // 点表构造按数据缓存：旧实现每次重组都重新 map 一遍全量点（重组一次 = 几千个 Pair 分配）
+    val series = remember(fps, palette) {
+        listOf(SeriesData("FPS", palette[0], fps.map { it.timestampMs to it.fps }))
     }
+    TimeSeriesChart(
+        "FPS",
+        series,
+        formatter = { v -> "%.1f".format(Locale.US, v) },
+        globalTs = globalTs,
+        onTsChange = onTsChange,
+    )
 }
 
 /**
@@ -1543,9 +1586,12 @@ private fun FrameTimeChart(detail: DetailUiState, globalTs: Long?, onTsChange: (
     val fps = detail.fpsSamples.filter { it.fps > 0f }
     if (fps.isEmpty()) return
     val label = stringResource(R.string.chart_frametime)
+    val series = remember(fps, palette, label) {
+        listOf(SeriesData(label, palette[2 % palette.size], fps.map { it.timestampMs to 1000f / it.fps }))
+    }
     TimeSeriesChart(
         label,
-        listOf(SeriesData(label, palette[2 % palette.size], fps.map { it.timestampMs to 1000f / it.fps })),
+        series,
         formatter = { v -> "%.1f ms".format(Locale.US, v) },
         globalTs = globalTs,
         onTsChange = onTsChange,
@@ -1553,71 +1599,82 @@ private fun FrameTimeChart(detail: DetailUiState, globalTs: Long?, onTsChange: (
 }
 
 @Composable
-private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {    val palette = LocalChartColors.current.palette
-    detail.devicePowerSamples.takeIf { it.isNotEmpty() }?.let { powers ->
-        val label = stringResource(R.string.chart_device_power)
-        TimeSeriesChart(
-            label,
-            listOf(SeriesData(label, palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f })),
-            formatter = { v -> "%.2f W".format(Locale.US, v) },
-            globalTs = globalTs,
-            onTsChange = onTsChange,
-        )
+private fun DevicePowerChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
+    val palette = LocalChartColors.current.palette
+    val powers = detail.devicePowerSamples
+    if (powers.isEmpty()) return
+    val label = stringResource(R.string.chart_device_power)
+    val series = remember(powers, palette, label) {
+        listOf(SeriesData(label, palette[0], powers.map { it.timestampMs to it.powerUw / 1_000_000f }))
     }
+    TimeSeriesChart(
+        label,
+        series,
+        formatter = { v -> "%.2f W".format(Locale.US, v) },
+        globalTs = globalTs,
+        onTsChange = onTsChange,
+    )
 }
 
 @Composable
 private fun ClusterFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
     val clusterRanges = rememberClusterRanges(detail)
-    detail.clusterFreqSamples.takeIf { it.isNotEmpty() }?.let { freqs ->
-        val series = freqs.groupBy { it.clusterName }.entries
+    val freqs = detail.clusterFreqSamples
+    if (freqs.isEmpty()) return
+    val series = remember(freqs, clusterRanges, palette) {
+        freqs.groupBy { it.clusterName }.entries
             .sortedBy { (name, _) -> clusterRanges.indexOfFirst { it.first == name }.takeIf { it >= 0 } ?: Int.MAX_VALUE }
             .mapIndexed { i, (name, rows) ->
                 SeriesData(name, clusterColorAt(palette, i), rows.map { it.timestampMs to it.freqKhz * 1000f })
             }
-        TimeSeriesChart(stringResource(R.string.chart_cluster_freq), series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
     }
+    TimeSeriesChart(stringResource(R.string.chart_cluster_freq), series, ::formatFreqHz, globalTs = globalTs, onTsChange = onTsChange)
 }
 
 @Composable
 private fun CoreUsageChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
     val clusterRanges = rememberClusterRanges(detail)
-    detail.coreUsageSamples.takeIf { it.isNotEmpty() }?.let { cores ->
-        val series = cores.groupBy { it.coreIndex }.entries.map { (core, rows) ->
+    val cores = detail.coreUsageSamples
+    if (cores.isEmpty()) return
+    val series = remember(cores, clusterRanges, palette) {
+        cores.groupBy { it.coreIndex }.entries.map { (core, rows) ->
             val clusterIdx = clusterRanges.indexOfFirst { (_, ranges) -> ranges.any { core in it } }
             val color = if (clusterIdx >= 0) clusterColorAt(palette, clusterIdx) else palette[core % palette.size]
             SeriesData("C$core", color, rows.map { it.timestampMs to it.usagePercent })
         }.sortedBy { it.name.removePrefix("C").toIntOrNull() ?: 0 }
-        TimeSeriesChart(
-            stringResource(R.string.chart_core_usage),
-            series,
-            { v -> "%.0f%%".format(Locale.US, v) },
-            interactive = false,
-            fixedMax = 100f,
-            yTickCount = 11,
-        )
     }
+    TimeSeriesChart(
+        stringResource(R.string.chart_core_usage),
+        series,
+        { v -> "%.0f%%".format(Locale.US, v) },
+        interactive = false,
+        fixedMax = 100f,
+        yTickCount = 11,
+    )
 }
 
 @Composable
 private fun DdrFreqChart(detail: DetailUiState, globalTs: Long?, onTsChange: (Long?) -> Unit) {
     val palette = LocalChartColors.current.palette
-    detail.ddrFreqSamples.takeIf { it.isNotEmpty() }?.let { ddr ->
-        TimeSeriesChart(
-            stringResource(R.string.chart_ddr_freq),
-            listOf(SeriesData("DDR", palette[0], ddr.map { it.timestampMs to it.freqHz.toFloat() })),
-            ::formatFreqHz,
-            globalTs = globalTs,
-            onTsChange = onTsChange,
-        )
+    val ddr = detail.ddrFreqSamples
+    if (ddr.isEmpty()) return
+    val series = remember(ddr, palette) {
+        listOf(SeriesData("DDR", palette[0], ddr.map { it.timestampMs to it.freqHz.toFloat() }))
     }
+    TimeSeriesChart(
+        stringResource(R.string.chart_ddr_freq),
+        series,
+        ::formatFreqHz,
+        globalTs = globalTs,
+        onTsChange = onTsChange,
+    )
 }
 
 @Composable
 private fun ZonePowerSection(detail: DetailUiState, samples: List<SampleEntity>, globalTs: Long?, onTsChange: (Long?) -> Unit) {
-    ZoneCharts(detail, samples.filter { !it.zoneName.equals("SOC", true) }, globalTs, onTsChange)
+    ZoneCharts(detail, remember(samples) { samples.filter { !it.zoneName.equals("SOC", true) } }, globalTs, onTsChange)
 }
 
 /** 按用户设定的区块顺序渲染详情页曲线（无数据的区块自动跳过）。 */
@@ -1717,30 +1774,38 @@ private fun GpuMergedChart(
     onTsChange: ((Long?) -> Unit)?,
 ) {
     val palette = LocalChartColors.current.palette
-    detail.gpuSamples.takeIf { it.isNotEmpty() }?.let { gpus ->
-        val freq = SeriesData(stringResource(R.string.chart_freq), palette[0], gpus.map { it.timestampMs to it.freqHz.toFloat() })
-        val usage = gpus.mapNotNull { it.usagePercent?.let { p -> it.timestampMs to p } }
-        if (usage.isNotEmpty()) {
-            TimeSeriesChart(
-                stringResource(R.string.chart_gpu_freq_and_usage),
-                listOf(freq),
-                ::formatFreqHz,
-                globalTs = globalTs,
-                onTsChange = onTsChange,
-                rightSeries = SeriesData(stringResource(R.string.chart_usage), palette[1], usage),
-                rightFormatter = { v -> "%.0f%%".format(Locale.US, v) },
-                rightFixedMax = 100f,
-                rightTickCount = 11,
-            )
-        } else {
-            TimeSeriesChart(
-                stringResource(R.string.chart_gpu_freq),
-                listOf(freq),
-                ::formatFreqHz,
-                globalTs = globalTs,
-                onTsChange = onTsChange,
-            )
-        }
+    val gpus = detail.gpuSamples
+    if (gpus.isEmpty()) return
+    val freqLabel = stringResource(R.string.chart_freq)
+    val freq = remember(gpus, palette, freqLabel) {
+        SeriesData(freqLabel, palette[0], gpus.map { it.timestampMs to it.freqHz.toFloat() })
+    }
+    val usageLabel = stringResource(R.string.chart_usage)
+    val usage = remember(gpus, palette, usageLabel) {
+        gpus.mapNotNull { it.usagePercent?.let { p -> it.timestampMs to p } }
+            .takeIf { it.isNotEmpty() }
+            ?.let { SeriesData(usageLabel, palette[1], it) }
+    }
+    if (usage != null) {
+        TimeSeriesChart(
+            stringResource(R.string.chart_gpu_freq_and_usage),
+            listOf(freq),
+            ::formatFreqHz,
+            globalTs = globalTs,
+            onTsChange = onTsChange,
+            rightSeries = usage,
+            rightFormatter = { v -> "%.0f%%".format(Locale.US, v) },
+            rightFixedMax = 100f,
+            rightTickCount = 11,
+        )
+    } else {
+        TimeSeriesChart(
+            stringResource(R.string.chart_gpu_freq),
+            listOf(freq),
+            ::formatFreqHz,
+            globalTs = globalTs,
+            onTsChange = onTsChange,
+        )
     }
 }
 
@@ -1751,12 +1816,14 @@ private fun TempChart(
     onTsChange: (Long?) -> Unit,
 ) {
     val palette = LocalChartColors.current.palette
-    detail.tempSamples.takeIf { it.isNotEmpty() }?.let { temps ->
-        val series = temps.groupBy { it.sensor }.entries.mapIndexed { i, (sensor, rows) ->
+    val temps = detail.tempSamples
+    if (temps.isEmpty()) return
+    val series = remember(temps, palette) {
+        temps.groupBy { it.sensor }.entries.mapIndexed { i, (sensor, rows) ->
             SeriesData(sensor.uppercase(), palette[i % palette.size], rows.map { it.timestampMs to it.tempC })
         }
-        TimeSeriesChart(stringResource(R.string.chart_temperature), series, formatter = { v -> "%.1f °C".format(Locale.US, v) }, globalTs = globalTs, onTsChange = onTsChange)
     }
+    TimeSeriesChart(stringResource(R.string.chart_temperature), series, formatter = { v -> "%.1f °C".format(Locale.US, v) }, globalTs = globalTs, onTsChange = onTsChange)
 }
 
 /** 解析 "CPU0-5"/"CPU0,2,4" 形式的簇名为连续核心区间列表。 */
@@ -1810,6 +1877,21 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
     val valueTextPx = with(density) { 10.sp.toPx() }
     val zoneTextPx = with(density) { 9.sp.toPx() }
 
+    // Paint / Path 复用：2Hz 数据刷新 + 主题切换之外不重新分配，
+    // 旧实现每次 Canvas 重绘新建 3 个 Paint 和每柱一个 Path
+    val tickPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    val labelPaint = remember {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+    val valuePaint = remember {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+    val barPath = remember { Path() }
+
     Canvas(Modifier.fillMaxWidth().height(214.dp)) {
         val left = 42.dp.toPx()
         val right = size.width - 4.dp.toPx()
@@ -1822,21 +1904,13 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
         val chartWidth = (right - left).coerceAtLeast(1f)
         val plotHeight = (bottom - plotTop).coerceAtLeast(1f)
 
-        val tickPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = colors.label.toArgb()
-            textSize = tickTextPx
-        }
-        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = colors.label.toArgb()
-            textSize = zoneTextPx
-            textAlign = android.graphics.Paint.Align.CENTER
-        }
-        val valuePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            // 用主题前景色而不是柱身色：浅色主题深字、深色主题浅字，任何柱色上都可读
-            color = colors.tooltipText.toArgb()
-            textSize = valueTextPx
-            textAlign = android.graphics.Paint.Align.CENTER
-        }
+        tickPaint.color = colors.label.toArgb()
+        tickPaint.textSize = tickTextPx
+        labelPaint.color = colors.label.toArgb()
+        labelPaint.textSize = zoneTextPx
+        // 用主题前景色而不是柱身色：浅色主题深字、深色主题浅字，任何柱色上都可读
+        valuePaint.color = colors.tooltipText.toArgb()
+        valuePaint.textSize = valueTextPx
 
         drawLine(colors.axis, Offset(left, bottom), Offset(right, bottom), strokeWidth = 2f)
 
@@ -1877,17 +1951,16 @@ private fun LiveBarChart(samples: List<ZoneSample>, palette: List<Color>) {
             // 只圆顶部两角：柱子从基线（x 轴）长出来，底部必须是直角，
             // 四角全圆会让柱子看起来「浮」在轴上，与柱状图的语义冲突。
             val corner = min(barWidth / 2f, barHeight)
-            val bar = Path().apply {
-                moveTo(barLeft, bottom)
-                lineTo(barLeft, barTop + corner)
-                quadraticTo(barLeft, barTop, barLeft + corner, barTop)
-                lineTo(barLeft + barWidth - corner, barTop)
-                quadraticTo(barLeft + barWidth, barTop, barLeft + barWidth, barTop + corner)
-                lineTo(barLeft + barWidth, bottom)
-                close()
-            }
+            barPath.rewind()
+            barPath.moveTo(barLeft, bottom)
+            barPath.lineTo(barLeft, barTop + corner)
+            barPath.quadraticTo(barLeft, barTop, barLeft + corner, barTop)
+            barPath.lineTo(barLeft + barWidth - corner, barTop)
+            barPath.quadraticTo(barLeft + barWidth, barTop, barLeft + barWidth, barTop + corner)
+            barPath.lineTo(barLeft + barWidth, bottom)
+            barPath.close()
             drawPath(
-                path = bar,
+                path = barPath,
                 brush = Brush.verticalGradient(
                     colors = listOf(color, color.copy(alpha = 0.45f)),
                     startY = barTop,
@@ -2197,6 +2270,11 @@ private fun DetailPage(
 
     val scrimAlpha by animateFloatAsState(1f - backProgress * 0.35f, label = "scrim")
 
+    // 可见分区过滤按「数据 + 勾选状态」缓存：十字光标拖动时每帧重组不再重跑全量 filter
+    val visibleSamples = remember(detail.samples, visibleZones.toMap()) {
+        detail.samples.filter { visibleZones[it.zoneName] != false }
+    }
+
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f * scrimAlpha))) {
         Box(
             Modifier
@@ -2301,7 +2379,7 @@ private fun DetailPage(
                             DetailCharts(
                                 detail = detail,
                                 order = chartOrder,
-                                samples = detail.samples.filter { visibleZones[it.zoneName] != false },
+                                samples = visibleSamples,
                                 globalTs = crosshairTs,
                                 onTsChange = { crosshairTs = it },
                             )
@@ -2556,10 +2634,13 @@ private fun ZoneCharts(
     onTsChange: ((Long?) -> Unit)? = null,
 ) {
     val palette = LocalChartColors.current.palette
-    val grouped = samples.groupBy { it.zoneName }
-    // 统一按 SOC → CPU-L（大核）→ CPU-M（小核）→ GPU → NSP 排序，与首页、OSD 一致。
+    // 分组按数据缓存：旧实现每次重组都对全量 samples groupBy 一遍。
+    // 统一按 SOC → CPU-L（大核）→ CPU-M（小核）→ GPU → NSP 排序，与首页、OSD 一致；
     // GPU 合并图不再楔在这里 —— 详情页已把它排在 GPU 频率/占用专属位置。
-    val ordered = grouped.entries.sortedWith(compareBy({ zoneDisplayRank(it.key) }, { it.key }))
+    val ordered = remember(samples) {
+        samples.groupBy { it.zoneName }.entries
+            .sortedWith(compareBy({ zoneDisplayRank(it.key) }, { it.key }))
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ordered.forEachIndexed { index, entry ->
             ZonePowerChart(
@@ -2585,13 +2666,19 @@ private fun ZonePowerChart(
     var touchY by remember { mutableStateOf(0f) }
     var widthPx by remember { mutableStateOf(0) }
     val tsList = remember(samples) { samples.map { it.timestampMs } }
-    val crosshairIndex = globalTs?.let { ts ->
-        tsList.indexOf(ts).takeIf { it >= 0 } ?: nearestByTs(ts, tsList)
-    }
+    val crosshairIndex = globalTs?.let { ts -> nearestByTs(ts, tsList) }
     val showTooltip = crosshairIndex != null && globalTs != null
     val chartColors = LocalChartColors.current
+    val textPaint = rememberChartTextPaint(chartColors.label)
     val density = LocalDensity.current
     val chartHeightPx = with(density) { 210.dp.toPx() }
+    // 点表与 min/max 按数据缓存，避免拖动十字光标时每帧重建
+    val series = remember(samples, lineColor, zoneName) {
+        listOf(SeriesData(zoneName, lineColor, samples.map { it.timestampMs to it.effectivePowerUw() / 1_000_000f }))
+    }
+    val tsRange = remember(tsList) {
+        if (tsList.isEmpty()) 0L to 0L else tsList.first() to tsList.last()
+    }
 
     MiuixCard(contentPadding = 14.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2606,8 +2693,8 @@ private fun ZonePowerChart(
         }
         Spacer(Modifier.height(6.dp))
         Box(Modifier.fillMaxWidth()) {
-            val minTs = tsList.minOrNull() ?: 0L
-            val maxTs = tsList.maxOrNull() ?: minTs
+            val minTs = tsRange.first
+            val maxTs = tsRange.second
             val durationMs = (maxTs - minTs).coerceAtLeast(1L)
             Canvas(
                 Modifier
@@ -2632,6 +2719,7 @@ private fun ZonePowerChart(
                     minTs = minTs,
                     durationMs = durationMs,
                     colors = chartColors,
+                    textPaint = textPaint,
                 )
             }
             if (showTooltip) {
@@ -2640,9 +2728,7 @@ private fun ZonePowerChart(
                 val chartWidth = (widthPx - ChartLeftPadding - ChartRightPadding).coerceAtLeast(1f)
                 val x = ChartLeftPadding + ((ts - minTs).toFloat() / durationMs) * chartWidth
                 CrosshairTooltip(
-                    series = listOf(
-                        SeriesData(zoneName, lineColor, samples.map { it.timestampMs to it.effectivePowerUw() / 1_000_000f }),
-                    ),
+                    series = series,
                     index = crosshairIndex ?: 0,
                     relativeSeconds = (ts - minTs) / 1000f,
                     anchorX = x,
@@ -2655,7 +2741,7 @@ private fun ZonePowerChart(
         }
         Spacer(Modifier.height(8.dp))
         ChartAverages(
-            listOf(SeriesData(zoneName, lineColor, samples.map { it.timestampMs to it.effectivePowerUw() / 1_000_000f })),
+            series,
             { v -> uwToW((v * 1_000_000f).toLong()) },
         )
     }
@@ -2669,6 +2755,7 @@ private fun DrawScope.drawSingleZoneChart(
     durationMs: Long = (samples.maxOfOrNull { it.timestampMs } ?: minTs).let { (it - minTs).coerceAtLeast(1L) },
     yTickCount: Int = 8,
     colors: ChartColors,
+    textPaint: android.graphics.Paint,
 ) {
     val left = ChartLeftPadding
     val right = size.width - ChartRightPadding
@@ -2676,10 +2763,7 @@ private fun DrawScope.drawSingleZoneChart(
     val bottom = size.height - ChartBottomPadding
     val chartWidth = (right - left).coerceAtLeast(1f)
     val chartHeight = (bottom - top).coerceAtLeast(1f)
-    val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = colors.label.toArgb()
-        textSize = 25f
-    }
+    textPaint.color = colors.label.toArgb()
 
     drawLine(colors.axis, Offset(left, top), Offset(left, bottom), strokeWidth = 2f)
     drawLine(colors.axis, Offset(left, bottom), Offset(right, bottom), strokeWidth = 2f)

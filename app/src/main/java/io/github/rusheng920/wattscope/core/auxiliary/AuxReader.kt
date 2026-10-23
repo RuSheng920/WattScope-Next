@@ -1,6 +1,7 @@
 package io.github.rusheng920.wattscope.core.auxiliary
 
 import io.github.rusheng920.wattscope.core.root.RootManager
+import io.github.rusheng920.wattscope.core.root.RootShellPool.Lane
 import io.github.rusheng920.wattscope.core.root.escapeForShell
 import io.github.rusheng920.wattscope.domain.ClusterFreqSample
 import io.github.rusheng920.wattscope.domain.CoreUsageSample
@@ -41,7 +42,7 @@ class AuxReader(private val rootManager: RootManager) {
         val lines = rootManager.execute(
             "for p in /sys/devices/system/cpu/cpufreq/policy*; do " +
                 "[ -f \"\$p/scaling_cur_freq\" ] || continue; " +
-                "c=\$(cat \"\$p/related_cpus\" 2>/dev/null); " +
+                "c=; read -r c 2>/dev/null < \"\$p/related_cpus\"; " +
                 "echo \"\$p|\$c\"; done",
         )
         return lines.mapNotNull { line ->
@@ -57,7 +58,7 @@ class AuxReader(private val rootManager: RootManager) {
     suspend fun scanTempZones(): TempSensors {
         val lines = rootManager.execute(
             "for z in /sys/class/thermal/thermal_zone*; do " +
-                "t=\$(cat \"\$z/type\" 2>/dev/null); " +
+                "t=; read -r t 2>/dev/null < \"\$z/type\"; " +
                 "[ -n \"\$t\" ] && echo \"\$z|\$t\"; done",
         )
         val cpuZones = mutableListOf<String>()
@@ -84,7 +85,7 @@ class AuxReader(private val rootManager: RootManager) {
 
     /** GPU 传感器：gpuclk 频率节点 + gpubusy(busy/total) 或 gpu_busy_percentage(百分比) 占用节点。 */
     suspend fun scanGpuSensor(): GpuSensor? {
-        val root = "/sys/class/kgsl/kgsl-3d0"
+        val root = GPU_ROOT
         val freqOk = rootManager.execute(
             "[ -f '$root/gpuclk' ] && echo 1 || echo 0",
         ).firstOrNull()?.trim() == "1"
@@ -104,10 +105,135 @@ class AuxReader(private val rootManager: RootManager) {
     suspend fun scanDdrFreqPath(): String? {
         val lines = rootManager.execute(
             "for d in /sys/class/devfreq/*/; do " +
-                "n=\$(basename \"\$d\"); " +
+                "n=\${d%/}; n=\${n##*/}; " +
                 "case \"\$n\" in *ddr*|*memory*|*memlat*|*llcc*|*bw*) [ -f \"\$d/cur_freq\" ] && echo \"\$d\";; esac; done",
         )
         return lines.firstOrNull { it.isNotBlank() }?.trim()
+    }
+
+    /** 一次扫描拿到的全部附加监控拓扑。字段与旧的分开扫描方法一一对应。 */
+    data class ScanResult(
+        val clusters: List<CpuCluster> = emptyList(),
+        val sensors: TempSensors = TempSensors(),
+        val gpu: GpuSensor? = null,
+        val ddrFreqPath: String? = null,
+        val batteryPowerAvailable: Boolean = false,
+    )
+
+    /**
+     * 一次性扫描全部附加监控拓扑：簇、温区、GPU 传感器、DDR 节点、整机功耗可用性。
+     *
+     * 旧实现是 5 次独立 su 往返（scanClusters / scanTempZones / scanGpuSensor /
+     * scanDdrFreqPath / isBatteryPowerAvailable），每次往返 50~300ms，启动路径与
+     * 概览页首帧要串行等 0.5~2s。这里合并为一条批量命令，全程 shell 内建 read，零 fork。
+     * 输出打标签解析，语义与旧方法完全一致（含 trip 温区过滤、量级判定、bms 候选目录）。
+     */
+    suspend fun scanAll(): ScanResult {
+        val lines = rootManager.execute(scanAllCommand(), lane = Lane.QUERY)
+        val clusters = mutableListOf<CpuCluster>()
+        val cpuZones = mutableListOf<String>()
+        var ddrZone: String? = null
+        var gpuZone: String? = null
+        var hasBatteryTemp = false
+        var ddrFreqPath: String? = null
+        var batteryPower = false
+        var gpu: GpuSensor? = null
+        lines.forEach { line ->
+            when {
+                line.startsWith("CLU|") -> {
+                    val p = line.split('|')
+                    val path = p.getOrNull(1)?.trim().orEmpty()
+                    val cores = p.getOrNull(2)?.trim().orEmpty()
+                    if (path.isNotEmpty() && cores.isNotEmpty()) clusters += CpuCluster(path = path, name = "CPU$cores")
+                }
+
+                line.startsWith("TZ|") -> {
+                    val p = line.split('|')
+                    val path = p.getOrNull(1)?.trim().orEmpty()
+                    val type = p.getOrNull(2)?.trim()?.lowercase()
+                    if (path.isEmpty() || type.isNullOrEmpty()) return@forEach
+                    when {
+                        "ddr" in type || "dram" in type -> if (ddrZone == null) ddrZone = path
+                        "gpu" in type -> if (gpuZone == null) gpuZone = path
+                        // 排除硬件跳闸阈值传感器（如 cpu-hw-trip-*，恒值 105°C，非真实温度）
+                        "cpu" in type && "trip" !in type -> cpuZones += path
+                    }
+                }
+
+                line.startsWith("GPUS|") -> {
+                    val p = line.split('|')
+                    if (p.getOrNull(1)?.trim() == "1") {
+                        val busyPath = when (p.getOrNull(2)?.trim()) {
+                            "0" -> "$GPU_ROOT/gpubusy"
+                            "1" -> "$GPU_ROOT/gpu_busy_percentage"
+                            else -> null
+                        }
+                        gpu = GpuSensor(
+                            freqPath = "$GPU_ROOT/gpuclk",
+                            busyPath = busyPath,
+                            busyIsPercent = p.getOrNull(2)?.trim() == "1",
+                        )
+                    }
+                }
+
+                line.startsWith("DDR|") -> {
+                    val path = line.substringAfter('|').trim()
+                    if (path.isNotEmpty()) ddrFreqPath = path
+                }
+
+                line.startsWith("BPW|") -> batteryPower = line.substringAfter('|').trim() == "1"
+                line.startsWith("BTMP|") -> hasBatteryTemp = line.substringAfter('|').trim() == "1"
+            }
+        }
+        return ScanResult(
+            clusters = clusters,
+            sensors = TempSensors(
+                cpuZones = cpuZones.sorted(),
+                ddrZone = ddrZone,
+                gpuZone = gpuZone,
+                hasBatteryTemp = hasBatteryTemp,
+            ),
+            gpu = gpu,
+            ddrFreqPath = ddrFreqPath,
+            batteryPowerAvailable = batteryPower,
+        )
+    }
+
+    /**
+     * [scanAll] 的批量命令。输出标签：
+     * CLU|path|related_cpus / TZ|path|type / GPUS|freqOk|busyKind(0=gpubusy 1=percent 2=none) /
+     * DDR|path / BPW|0|1 / BTMP|0|1。
+     */
+    private fun scanAllCommand(): String = buildString {
+        append("for p in /sys/devices/system/cpu/cpufreq/policy*; do ")
+        append("[ -f \"\$p/scaling_cur_freq\" ] || continue; ")
+        append("c=; read -r c 2>/dev/null < \"\$p/related_cpus\"; ")
+        append("printf 'CLU|%s|%s\\n' \"\$p\" \"\$c\"; done; ")
+
+        append("for z in /sys/class/thermal/thermal_zone*; do ")
+        append("t=; read -r t 2>/dev/null < \"\$z/type\"; ")
+        append("[ -n \"\$t\" ] && printf 'TZ|%s|%s\\n' \"\$z\" \"\$t\"; done; ")
+
+        append("g=$GPU_ROOT; gf=0; bk=2; ")
+        append("if [ -f \"\$g/gpuclk\" ]; then gf=1; ")
+        append("if [ -f \"\$g/gpubusy\" ]; then bk=0; elif [ -f \"\$g/gpu_busy_percentage\" ]; then bk=1; fi; fi; ")
+        append("printf 'GPUS|%s|%s\\n' \"\$gf\" \"\$bk\"; ")
+
+        append("for d in /sys/class/devfreq/*/; do ")
+        append("n=\${d%/}; n=\${n##*/}; ")
+        append("case \"\$n\" in *ddr*|*memory*|*memlat*|*llcc*|*bw*) [ -f \"\$d/cur_freq\" ] && printf 'DDR|%s\\n' \"\$d\";; esac; done; ")
+
+        // 整机功耗可用性：与 isBatteryPowerAvailable 同一判定（current_now+voltage_now 优先，power_now 非 0 兜底）
+        append("b=; c=; w=; for n in battery Battery bms hisi_bk_battery; do ")
+        append("d=/sys/class/power_supply/\$n; ")
+        append("read -r c 2>/dev/null < \$d/current_now; ")
+        append("read -r w 2>/dev/null < \$d/voltage_now; ")
+        append("if [ -n \"\$c\" ] && [ -n \"\$w\" ]; then b=1; break; fi; c=; w=; done; ")
+        append("if [ -n \"\$b\" ]; then printf 'BPW|1\\n'; else ")
+        append("p=; read -r p 2>/dev/null < /sys/class/power_supply/battery/power_now; ")
+        append("if [ -n \"\$p\" ] && [ \"\$p\" != \"0\" ]; then printf 'BPW|1\\n'; else printf 'BPW|0\\n'; fi; fi; ")
+
+        append("bt=0; [ -f /sys/class/power_supply/battery/temp ] && bt=1; printf 'BTMP|%s\\n' \"\$bt\"")
     }
 
     /**
@@ -367,5 +493,10 @@ class AuxReader(private val rootManager: RootManager) {
 
     fun resetDeltas() {
         prevStat.clear()
+    }
+
+    private companion object {
+        /** 高通 Adreno KGSL 节点根目录（SM8850 实测路径）。 */
+        const val GPU_ROOT = "/sys/class/kgsl/kgsl-3d0"
     }
 }

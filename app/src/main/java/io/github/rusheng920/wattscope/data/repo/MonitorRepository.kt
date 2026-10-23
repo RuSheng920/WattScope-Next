@@ -493,15 +493,17 @@ class MonitorRepository(
             _state.update { it.copy(qptAvailable = false, qptEnabled = false, status = StatusText(R.string.status_root_failed)) }
             return@withContext
         }
-        val available = qptReader.isAvailable()
-        val enabled = if (available) qptReader.isEnabled() else false
+        // QPT 可用性与开关状态合并为一次往返；zone 列表仍走 find 发现 + 批量读（2 次）
+        val (available, enabled) = qptReader.probeStatus()
         val zones = if (available) qptReader.scanZones() else emptyList()
         qptReader.cacheZones(zones)
-        val clusters = auxReader.scanClusters()
-        val tempSensors = auxReader.scanTempZones()
-        val devicePowerAvailable = auxReader.isBatteryPowerAvailable()
-        val gpuSensor = auxReader.scanGpuSensor()
-        val ddrFreqPath = auxReader.scanDdrFreqPath()
+        // 附加监控拓扑一次往返拿完（旧实现 5 次串行 su，启动路径要等 0.5~2s）
+        val scan = auxReader.scanAll()
+        val clusters = scan.clusters
+        val tempSensors = scan.sensors
+        val devicePowerAvailable = scan.batteryPowerAvailable
+        val gpuSensor = scan.gpu
+        val ddrFreqPath = scan.ddrFreqPath
 
         scanned = true
         lastScanElapsedMs = now
