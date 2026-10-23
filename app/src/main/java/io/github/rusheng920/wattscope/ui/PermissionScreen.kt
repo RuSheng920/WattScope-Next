@@ -1,5 +1,6 @@
 package io.github.rusheng920.wattscope.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -537,6 +538,11 @@ fun OnboardingScreen(
     onFinish: () -> Unit,
     onSkip: () -> Unit,
 ) {
+    // 引导页是模态页：返回键等同于「稍后设置」。
+    // 不拦截的话返回会直接 finish Activity，而 onboardingDone 仍为 false，
+    // 下次启动又回到引导页，用户被困在死循环里。整页替换无下层内容，无需跟手进度动画。
+    BackHandler(enabled = true) { onSkip() }
+
     // 引导页底色与仪表盘 pageBrush 保持一致（顶栏/首屏无接缝）；
     // 纯黑在引导页上过于单调，带一点纵向冷暖过渡后，权限卡片的 surfaceContainer 才有「浮起」的参照
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
