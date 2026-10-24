@@ -11,7 +11,7 @@
 <p align="center">基于 Qualcomm Power Telemetry，以接近零的运行时开销实时观测并记录功耗、频率、温度与帧率。</p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.5-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.4.0-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-watt.rusheng.top-F23A2A" alt="官网" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
@@ -153,6 +153,47 @@ MonitorRepository ──su shell 批量采样──> core/* Reader
 > 应用 ID 为 `io.github.rusheng920.wattscope`，与原版 WattScope 的 `com.qpt.powermonitor` 相互独立，可同时安装。
 
 ## 更新日志
+
+### v1.4.0
+
+本版是 1.4 系列的功能大版本：新增概览、进程管理与会话分析三块只读观测能力，保活改走无障碍宿主，启动与详情页的渲染开销一并压缩。
+
+#### 新增
+
+- **概览页**：SoC / CPU / 内存 / GPU / 缓存 / 系统六段只读快照，可见时才以 1Hz 轮询；底部导航相应扩为四栏（仪表盘 / 概览 / 记录 / 设置）
+- **进程管理**：CPU 占用取 `top` 第二帧、内存读 `statm`、展示名读 `comm` 并映射回应用包名；支持结束进程与查看 `/proc` 详情（PSS / 线程数 / FD）
+- **会话分析**：平均 / 最高 / 最低 FPS、方差 σ、流畅度、5% Low、平均帧时间与卡顿采样，配帧时间曲线与应用切换时间轴
+- **记录管理**：全部 / FPS 会话筛选，长按多选批量删除与重命名（数据库升至 v5）
+- **PNG 分享图**：Canvas 直接绘制 1080×1500 长图，不依赖截屏
+- **悬浮层扩展**：OSD 增加 CPU 负载、内存、CPU 频率读数；另可单独挂出 5 个指标胶囊窗口
+- **root 一键授权**：`pm` / `appops` / `settings` 批量写入并逐项回读校验，一次补齐剩余权限
+
+#### 变更
+
+- **保活改走无障碍宿主**：ROM 墓碑按 uid 冻结 cgroup，同 uid 的 `:daemon` 子进程会一并被冻，原方案作废。改由无障碍服务承载常驻宿主，窗口以 `TYPE_ACCESSIBILITY_OVERLAY` 挂载，不需要悬浮窗权限；无障碍断开时自动回落到前台服务，保证同一时刻只有一个挂窗者。另加 root 冻结守卫，脚本首行即将自身摘出 app cgroup
+- **前台判定改为推送**：记录期间每 2 秒一次的 `dumpsys activity` 归零，改由无障碍窗口事件驱动
+- **FPS 图层选择改为实测**：先过滤镜像层、合成器内部层等无帧数据来源，对候选逐个跑 `--latency` 取实测帧率，再按前台包与图层类型排序
+- **检查更新与下载走多镜像**：官方 API 失败后依次尝试镜像；下载中断亦换前缀重试，国内直连 release 资产不再动辄失败
+- **权限清单补全「安装未知应用」**（应用内更新安装 APK 必需）与「后台常驻服务」项
+- 概览页缓存层级改为显示共享范围：本机内核不导出 `size` 属性，只给 `shared_cpu_list` 时显示「N 核共用 / 单核独占」
+
+#### 性能
+
+- 启动阶段 su 往返由 9 次降到 5 次：簇 / 温区 / GPU / DDR / 整机功耗拓扑合并为一次批量扫描，全程 shell 内建 `read`，不再 fork
+- 详情页 9 个图表的点表、均值与时间轴全部缓存化，最近点查找由线性扫描改二分，绘制用 Paint 复用
+- 应用图标增加 LRU 缓存，记录列表滚动不再重复解码
+
+#### 修复
+
+- **首次引导页按返回键会直接退出应用**，而引导仍未完成，重启后再次回到引导页形成死循环；现在返回等同「稍后设置」，直接进入应用
+- **预测性返回手势**对照官方指引逐项核对：设置二级页、进程管理、记录详情、权限中心均支持跟手预览，根页面交由系统播放返回主屏幕动画
+- FPS 采样失败层此前只清图层名、下轮必然挑回同一坏层，现进黑名单并退避 15 秒；记录路径补上内核 `measured_fps` 第三级兜底
+- root 运行期被撤销后不再反复 fork 废 sh，改置降级状态并自动重试
+- 冷启动后每核负载不再恒为 0
+
+#### 说明
+
+- `foregroundServiceType` 由 `dataSync` 改为 `specialUse`：Android 15+ 的 `dataSync` 受 6 小时 / 24 小时配额限制，超时会被系统直接停服
 
 ### v1.3.1
 

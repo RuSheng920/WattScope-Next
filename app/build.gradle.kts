@@ -21,9 +21,9 @@ android {
         applicationId = "io.github.rusheng920.wattscope"
         minSdk = 33
         targetSdk = 36
-        // 正式版：versionCode 需大于所有测试版（beta.3 = 11），保证 beta 用户可直接覆盖安装
-        versionCode = 17
-        versionName = "1.3.1"
+        // 正式版：versionCode 需大于所有测试版（beta.6 = 23），保证 beta 用户可直接覆盖安装
+        versionCode = 24
+        versionName = "1.4.0"
     }
 
     signingConfigs {

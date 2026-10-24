@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.2.5-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/Release-v1.4.0-2EA44F?logo=github&logoColor=white" alt="Release" /></a>
   <a href="https://watt.rusheng.top"><img src="https://img.shields.io/badge/Website-watt.rusheng.top-F23A2A" alt="Website" /></a>
   <a href="docs/power-reading.md"><img src="https://img.shields.io/badge/Docs-Docs-4285F4?logo=readthedocs&logoColor=white" alt="Docs" /></a>
   <img src="https://img.shields.io/badge/Android%2013%2B-3DDC84?logo=android&logoColor=white" alt="Android 13+" />
@@ -155,6 +155,47 @@ See [Releases](../../releases).
 > The application ID is `io.github.rusheng920.wattscope`, independent from the original WattScope (`com.qpt.powermonitor`), so both can be installed side by side.
 
 ## Changelog
+
+### v1.4.0
+
+The 1.4 feature release: three new read-only surfaces — overview, process manager and session analysis — plus a keep-alive host rebuilt on the accessibility service, and lighter startup and detail-page rendering.
+
+#### Added
+
+- **Overview page**: read-only snapshots of SoC, CPU, memory, GPU, cache and system, polled at 1Hz only while visible. The bottom bar grows to four tabs (Dashboard / Overview / Records / Settings)
+- **Process manager**: CPU load from the second frame of `top`, memory from `statm`, display name from `comm` mapped back to the owning package; supports killing a process and inspecting `/proc` details (PSS / threads / FDs)
+- **Session analysis**: average / max / min FPS, variance σ, fluency, 5% Low, mean frame time and jank samples, with a frame-time curve and an app-switch timeline
+- **Record management**: filter by all / FPS sessions, long-press multi-select for batch delete and rename (database bumped to v5)
+- **PNG share cards**: drawn on a Canvas at 1080×1500, no screen capture required
+- **Overlay expansion**: the OSD gains CPU load, memory and CPU frequency readouts; five standalone metric pills can be pinned separately
+- **One-tap root grants**: batch `pm` / `appops` / `settings` writes with a read-back check for each step
+
+#### Changed
+
+- **Keep-alive moved to an accessibility host**: ROM tombstones freeze the whole cgroup by uid, so a `:daemon` child process sharing the app's uid got frozen along with it and the old approach was a dead end. A bound accessibility service now holds the resident host and mounts its window as `TYPE_ACCESSIBILITY_OVERLAY`, which needs no overlay permission. When accessibility disconnects, the foreground service takes over, so only one host owns the window at a time. A root freeze guard also writes itself out of the app cgroup on its first line
+- **Foreground detection is push-based**: the `dumpsys activity` poll every 2 seconds during recording drops to zero, replaced by accessibility window events
+- **FPS layer selection is now measured**: mirror layers and compositor internals without frame timestamps are filtered out, each candidate runs `--latency` once for a measured rate, then results are ranked by foreground package and layer type
+- **Update checks and downloads fall back across mirrors**: when the official API fails, mirrors are tried in order; interrupted downloads retry with a different prefix
+- **Permission list gains "Install unknown apps"** (required to install an update APK) and a "Resident background service" entry
+- **Overview cache hierarchy reports sharing scope**: the kernel here exports no `size` attribute, so when only `shared_cpu_list` exists it shows "shared by N cores / exclusive to one"
+
+#### Performance
+
+- Startup su round-trips drop from 9 to 5: cluster, thermal zone, GPU, DDR and total-power topology collapse into one batch scan that uses the shell builtin `read` throughout, with no forks
+- On the detail page all nine charts cache their point tables, averages and timelines; nearest-point lookup moves from a linear scan to binary search, and draw Paints are reused
+- App icons get an LRU cache, so scrolling the record list no longer re-decodes them
+
+#### Fixed
+
+- **Back on the first-run onboarding screen exited the app** while onboarding stayed incomplete, trapping users in a restart loop. Back now behaves like "Set up later" and enters the app directly
+- **Predictive back** was audited item by item against the official guidance: settings sub-pages, the process manager, record detail and the permission center all preview with the gesture, while the root page defers to the system back-to-home animation
+- A failing FPS layer used to have only its name cleared, so the next round picked the same bad layer again; it now goes into a blacklist with a 15-second backoff, and the recording path gains the kernel `measured_fps` fallback as a third tier
+- Revoking root at runtime no longer forks a dead shell per call — the pool enters a degraded state and retries on its own
+- Per-core load no longer reads as zero after a cold start
+
+#### Notes
+
+- `foregroundServiceType` changes from `dataSync` to `specialUse`: on Android 15+ `dataSync` is capped at 6 hours per 24, after which the system stops the service outright
 
 ### v1.3.1
 

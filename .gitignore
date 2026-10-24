@@ -27,6 +27,7 @@ releases/
 /*.xml
 /*.db
 /hs_err*.log
+.wbapp_*.genie
 
 # 文档站（VitePress）
 node_modules/
